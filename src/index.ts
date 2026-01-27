@@ -1,3 +1,3 @@
-export { Session } from './instance'
-export { Poller } from './polling'
-export { ready } from './initializers'
+export { Session } from "./instance";
+export { Poller } from "./polling";
+export { ready } from "./initializers";

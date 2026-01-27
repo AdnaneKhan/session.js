@@ -1,61 +1,61 @@
 {
-  "name": "@session.js/client",
-  "version": "0.0.54",
-  "type": "module",
-  "homepage": "https://github.com/sessionjs/client",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sessionjs/client.git"
-  },
-  "bugs": {
-    "url": "https://github.com/sessionjs/client/issues"
-  },
-  "license": "MIT",
-  "scripts": {
-    "build": "rm -rf dist && tsc --project tsconfig.publish.json && tsc-alias -p tsconfig.publish.json --resolve-full-paths"
-  },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": "./dist/index.js",
-    "./polling": "./dist/polling/index.js",
-    "./storage": "./dist/storage/index.js",
-    "./schema": "./dist/messages/schema/index.js"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.4.0",
-    "@types/bun": "latest",
-    "@types/bytebuffer": "^5.0.49",
-    "@types/libsodium-wrappers-sumo": "^0.7.8",
-    "@types/lodash": "^4.17.4",
-    "@types/uuid": "^9.0.8",
-    "eslint": "9.x",
-    "globals": "^15.4.0",
-    "tsc-alias": "^1.8.10",
-    "typescript-eslint": "^7.12.0"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
-  },
-  "files": [
-    "dist/**/*.js",
-    "dist/**/*.d.ts",
-    "README.md"
-  ],
-  "dependencies": {
-    "@session.js/bun-network": "^1.0.10",
-    "@session.js/consts": "^1.0.3",
-    "@session.js/errors": "^1.0.10",
-    "@session.js/keypair": "^1.0.3",
-    "@session.js/mnemonic": "^1.0.4",
-    "@session.js/types": "^1.0.11",
-    "bytebuffer": "^5.0.1",
-    "curve25519-js": "^0.0.4",
-    "libsodium-wrappers-sumo": "0.7.13",
-    "lodash": "^4.17.21",
-    "p-retry": "^6.2.0",
-    "protobufjs": "^7.3.0",
-    "uuid": "^9.0.1",
-    "zod": "^3.23.8"
-  }
+	"name": "@session.js/client",
+	"version": "0.0.54",
+	"type": "module",
+	"homepage": "https://github.com/sessionjs/client",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/sessionjs/client.git"
+	},
+	"bugs": {
+		"url": "https://github.com/sessionjs/client/issues"
+	},
+	"license": "MIT",
+	"scripts": {
+		"build": "rm -rf dist && tsc --project tsconfig.publish.json && tsc-alias -p tsconfig.publish.json --resolve-full-paths"
+	},
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./polling": "./dist/polling/index.js",
+		"./storage": "./dist/storage/index.js",
+		"./schema": "./dist/messages/schema/index.js"
+	},
+	"devDependencies": {
+		"@eslint/compat": "^2.0.1",
+		"@eslint/js": "^9.39.2",
+		"@types/bun": "latest",
+		"@types/bytebuffer": "^5.0.49",
+		"@types/lodash": "^4.17.4",
+		"eslint-config-prettier": "^10.1.8",
+		"tsc-alias": "^1.8.10",
+		"typescript-eslint": "^8.53.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5.0.0"
+	},
+	"files": [
+		"dist/**/*.js",
+		"dist/**/*.d.ts",
+		"README.md"
+	],
+	"dependencies": {
+		"@noble/ciphers": "^2.1.1",
+		"@noble/curves": "^2.0.1",
+		"@noble/hashes": "^2.0.1",
+		"@session.js/bun-network": "^1.0.10",
+		"@session.js/consts": "^1.0.3",
+		"@session.js/errors": "^1.0.10",
+		"@session.js/keypair": "^1.0.3",
+		"@session.js/mnemonic": "^1.0.4",
+		"@session.js/types": "^1.0.11",
+		"bytebuffer": "^5.0.1",
+		"curve25519-js": "^0.0.4",
+		"lodash": "^4.17.21",
+		"p-retry": "^6.2.0",
+		"protobufjs": "^7.3.0",
+		"uuid": "^13.0.0",
+		"zod": "^3.23.8"
+	}
 }

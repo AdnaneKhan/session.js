@@ -1,25 +1,25 @@
-import type { Storage } from '@session.js/types'
+import type { Storage } from "@session.js/types";
 
 export class InMemoryStorage implements Storage {
-  storage: Map<string, string>
+	storage: Map<string, string>;
 
-  constructor() {
-    this.storage = new Map()
-  }
+	constructor() {
+		this.storage = new Map();
+	}
 
-  get(key: string) {
-    return this.storage.get(key) ?? null
-  }
+	get(key: string) {
+		return this.storage.get(key) ?? null;
+	}
 
-  set(key: string, value: string) {
-    this.storage.set(key, value)
-  }
+	set(key: string, value: string) {
+		this.storage.set(key, value);
+	}
 
-  delete(key: string) {
-    this.storage.delete(key)
-  }
+	delete(key: string) {
+		this.storage.delete(key);
+	}
 
-  has(key: string) {
-    return this.storage.has(key)
-  }
+	has(key: string) {
+		return this.storage.has(key);
+	}
 }

@@ -1,101 +1,111 @@
-import { sign } from '@/crypto/signature'
-import { MAX_ATTACHMENT_FILESIZE_BYTES } from '@session.js/consts'
-import { SessionCryptoError, SessionCryptoErrorCode } from '@session.js/errors'
-import sodium from 'libsodium-wrappers-sumo'
+import { sign } from "@/crypto/signature";
+import { randomBytes } from "@noble/ciphers/utils.js";
+import { MAX_ATTACHMENT_FILESIZE_BYTES } from "@session.js/consts";
+import { SessionCryptoError, SessionCryptoErrorCode } from "@session.js/errors";
 
 export async function encryptFileAttachment(file: File) {
-  return await encryptAttachment(await file.arrayBuffer(), true)
+	return await encryptAttachment(await file.arrayBuffer(), true);
 }
 
 export async function encryptLinkPreview() {
-  // TODO: encryptAttachment with addPadding = false
+	// TODO: encryptAttachment with addPadding = false
 }
 
 export async function encryptQuote() {
-  // TODO: encryptAttachment with addPadding = false
+	// TODO: encryptAttachment with addPadding = false
 }
 
-const PADDING_BYTE = 0x00
+const PADDING_BYTE = 0x00;
 async function encryptAttachment(data: ArrayBuffer, addPadding = false) {
-  const pointerKey = sodium.randombytes_buf(64)
-  const iv = sodium.randombytes_buf(16)
-  const padded = addPadding ? addAttachmentPadding(data) : data
-  const encrypted = await encryptAttachmentData(padded, pointerKey.buffer as ArrayBuffer, iv.buffer as ArrayBuffer)
-  return { ...encrypted, key: pointerKey }
+	const pointerKey = randomBytes(64);
+	const iv = randomBytes(16);
+	const padded = addPadding ? addAttachmentPadding(data) : data;
+	const encrypted = await encryptAttachmentData(
+		padded,
+		pointerKey.buffer as ArrayBuffer,
+		iv.buffer as ArrayBuffer,
+	);
+	return { ...encrypted, key: pointerKey };
 }
 
 function addAttachmentPadding(data: ArrayBufferLike): ArrayBuffer {
-  const originalUInt = new Uint8Array(data)
+	const originalUInt = new Uint8Array(data);
 
-  let paddedSize = Math.max(
-    541,
-    Math.floor(Math.pow(1.05, Math.ceil(Math.log(originalUInt.length) / Math.log(1.05))))
-  )
+	let paddedSize = Math.max(
+		541,
+		Math.floor(Math.pow(1.05, Math.ceil(Math.log(originalUInt.length) / Math.log(1.05)))),
+	);
 
-  if (
-    paddedSize > MAX_ATTACHMENT_FILESIZE_BYTES &&
-    originalUInt.length <= MAX_ATTACHMENT_FILESIZE_BYTES
-  ) {
-    paddedSize = MAX_ATTACHMENT_FILESIZE_BYTES
-  }
-  const paddedData = new ArrayBuffer(paddedSize)
-  const paddedUInt = new Uint8Array(paddedData)
+	if (
+		paddedSize > MAX_ATTACHMENT_FILESIZE_BYTES &&
+		originalUInt.length <= MAX_ATTACHMENT_FILESIZE_BYTES
+	) {
+		paddedSize = MAX_ATTACHMENT_FILESIZE_BYTES;
+	}
+	const paddedData = new ArrayBuffer(paddedSize);
+	const paddedUInt = new Uint8Array(paddedData);
 
-  paddedUInt.fill(PADDING_BYTE, originalUInt.length)
-  paddedUInt.set(originalUInt)
+	paddedUInt.fill(PADDING_BYTE, originalUInt.length);
+	paddedUInt.set(originalUInt);
 
-  return paddedUInt.buffer as ArrayBuffer
+	return paddedUInt.buffer as ArrayBuffer;
 }
 
 export async function encryptAttachmentData(
-  plaintext: ArrayBuffer,
-  keys: ArrayBuffer,
-  iv: ArrayBuffer
+	plaintext: ArrayBuffer,
+	keys: ArrayBuffer,
+	iv: ArrayBuffer,
 ) {
-  if (!(plaintext instanceof ArrayBuffer) && !ArrayBuffer.isView(plaintext)) {
-    throw new TypeError(
-      `\`plaintext\` must be an \`ArrayBuffer\` or \`ArrayBufferView\`; got: ${typeof plaintext}`
-    )
-  }
+	if (!(plaintext instanceof ArrayBuffer) && !ArrayBuffer.isView(plaintext)) {
+		throw new TypeError(
+			`\`plaintext\` must be an \`ArrayBuffer\` or \`ArrayBufferView\`; got: ${typeof plaintext}`,
+		);
+	}
 
-  if (keys.byteLength !== 64) {
-    throw new SessionCryptoError({ code: SessionCryptoErrorCode.AttachmentEncryptionFailed, message: 'Got invalid length attachment keys' })
-  }
-  if (iv.byteLength !== 16) {
-    throw new SessionCryptoError({ code: SessionCryptoErrorCode.AttachmentEncryptionFailed, message: 'Got invalid length attachment iv' })
-  }
-  const aesKey = keys.slice(0, 32)
-  const macKey = keys.slice(32, 64)
+	if (keys.byteLength !== 64) {
+		throw new SessionCryptoError({
+			code: SessionCryptoErrorCode.AttachmentEncryptionFailed,
+			message: "Got invalid length attachment keys",
+		});
+	}
+	if (iv.byteLength !== 16) {
+		throw new SessionCryptoError({
+			code: SessionCryptoErrorCode.AttachmentEncryptionFailed,
+			message: "Got invalid length attachment iv",
+		});
+	}
+	const aesKey = keys.slice(0, 32);
+	const macKey = keys.slice(32, 64);
 
-  return encrypt(aesKey, plaintext, iv).then(async (ciphertext: any) => {
-    const ivAndCiphertext = new Uint8Array(16 + ciphertext.byteLength)
-    ivAndCiphertext.set(new Uint8Array(iv))
-    ivAndCiphertext.set(new Uint8Array(ciphertext), 16)
+	return encrypt(aesKey, plaintext, iv).then(async (ciphertext: any) => {
+		const ivAndCiphertext = new Uint8Array(16 + ciphertext.byteLength);
+		ivAndCiphertext.set(new Uint8Array(iv));
+		ivAndCiphertext.set(new Uint8Array(ciphertext), 16);
 
-    return calculateMAC(macKey, ivAndCiphertext.buffer).then(async (mac: any) => {
-      const encryptedBin = new Uint8Array(16 + ciphertext.byteLength + 32)
-      encryptedBin.set(ivAndCiphertext)
-      encryptedBin.set(new Uint8Array(mac), 16 + ciphertext.byteLength)
-      return calculateDigest(encryptedBin.buffer as ArrayBuffer).then(digest => ({
-        ciphertext: encryptedBin.buffer as ArrayBuffer,
-        digest,
-      }))
-    })
-  })
+		return calculateMAC(macKey, ivAndCiphertext.buffer).then(async (mac: any) => {
+			const encryptedBin = new Uint8Array(16 + ciphertext.byteLength + 32);
+			encryptedBin.set(ivAndCiphertext);
+			encryptedBin.set(new Uint8Array(mac), 16 + ciphertext.byteLength);
+			return calculateDigest(encryptedBin.buffer as ArrayBuffer).then((digest) => ({
+				ciphertext: encryptedBin.buffer as ArrayBuffer,
+				digest,
+			}));
+		});
+	});
 }
 
 async function encrypt(key: any, data: any, iv: any) {
-  return crypto.subtle
-    .importKey('raw', key, { name: 'AES-CBC' }, false, ['encrypt'])
-    .then(async secondKey => {
-      return crypto.subtle.encrypt({ name: 'AES-CBC', iv: new Uint8Array(iv) }, secondKey, data)
-    })
+	return crypto.subtle
+		.importKey("raw", key, { name: "AES-CBC" }, false, ["encrypt"])
+		.then(async (secondKey) => {
+			return crypto.subtle.encrypt({ name: "AES-CBC", iv: new Uint8Array(iv) }, secondKey, data);
+		});
 }
 
 async function calculateMAC(key: any, data: any) {
-  return sign(key, data)
+	return sign(key, data);
 }
 
 async function calculateDigest(data: ArrayBuffer) {
-  return crypto.subtle.digest({ name: 'SHA-256' }, data)
+	return crypto.subtle.digest({ name: "SHA-256" }, data);
 }

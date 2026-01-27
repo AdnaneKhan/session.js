@@ -1,1 +1,1 @@
-export { InMemoryStorage } from './in-memory'
+export { InMemoryStorage } from "./in-memory";
