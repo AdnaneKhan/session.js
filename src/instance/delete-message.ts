@@ -36,7 +36,7 @@ export async function deleteMessages(
 	this: Session,
 	messages: { to: string; timestamp: number; hash: string }[],
 ) {
-	const keypair = this.keypair;
+	const keypair = this.keys;
 	if (!keypair)
 		throw new SessionRuntimeError({
 			code: SessionRuntimeErrorCode.EmptyUser,
@@ -52,7 +52,7 @@ export async function deleteMessages(
  * they are permanently erased and won't be received by recipient if they haven't
  * retrieved them yet */
 async function deleteMessagesFromSwarm(this: Session, { hashes }: { hashes: string[] }) {
-	const keypair = this.keypair!;
+	const keypair = this.keys!;
 	const verificationData = new TextEncoder().encode(`delete${hashes.join("")}`);
 	const message = new Uint8Array(verificationData);
 	const signature = ed25519.sign(message, keypair.ed25519.privateKey);
@@ -124,7 +124,7 @@ async function propagateUnsendMessages(
 		toRawMessage(messages[i].to, m, SnodeNamespaces.UserMessages),
 	);
 	const wrappedMessages = await wrap(
-		this.keypair!,
+		this.keys!,
 		rawMessages.map((rawMessage, i) => {
 			return {
 				destination: messages[i].to,
@@ -146,7 +146,7 @@ async function propagateUnsendMessages(
 		toRawMessage(this.getSessionID(), m, SnodeNamespaces.UserMessages),
 	);
 	const wrappedSyncMessages = await wrap(
-		this.keypair!,
+		this.keys!,
 		unsendMessages.map((m, i) => {
 			return {
 				destination: this.getSessionID(),

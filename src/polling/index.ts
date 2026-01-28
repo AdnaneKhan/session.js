@@ -13,7 +13,7 @@ import { RequestType, type RequestPollBody } from "@session.js/types/network/req
 import type { EnvelopePlus } from "@session.js/types/envelope";
 import type { RequestNamespace } from "@session.js/types/snode-retrieve";
 import type { Swarm } from "@session.js/types/swarm";
-import type { Keypair } from "@session.js/keypair";
+import type { KeyPair, SessionKeys } from "@session.js/keypair";
 import { decodeMessage, decryptMessage, extractContent } from "@/crypto/message-decrypt";
 import { getSnodeSignatureParams } from "@/crypto/signature";
 import type { Session } from "@/instance";
@@ -145,11 +145,11 @@ export class Poller {
 				code: SessionRuntimeErrorCode.NoInstancePolling,
 				message: "Polling can't be started without attaching Session instance",
 			});
-		const keypair = this.instance.getKeypair();
-		if (!keypair)
+		const keys = this.instance.getKeys();
+		if (!keys)
 			throw new SessionRuntimeError({
 				code: SessionRuntimeErrorCode.Generic,
-				message: "Polling can't be started without keypair",
+				message: "Polling can't be started without keys",
 			});
 
 		const { updateLastHashes, onMessagesReceived } = this.methods!;
@@ -171,7 +171,7 @@ export class Poller {
 							pubkey: sessionID,
 							isOurPubkey: true,
 							signature: getSnodeSignatureParams({
-								ed25519Key: keypair.ed25519,
+								ed25519Key: keys.ed25519,
 								method: "retrieve",
 								namespace: namespace,
 							}),
@@ -242,7 +242,7 @@ export class Poller {
 				);
 				if (envelope === null) return;
 
-				let keypairs: Keypair[];
+				let keypairs: SessionKeys[];
 				if (envelope.type === SignalService.Envelope.Type.CLOSED_GROUP_MESSAGE) {
 					// const coversation = instance.getConversation(envelope.source)
 					// TODO: check if conversation exists and it is closed group
@@ -250,7 +250,7 @@ export class Poller {
 					// TODO: get closed group keypairs by reading all keypairs for public key defined in envelope.source
 					keypairs = [];
 				} else {
-					keypairs = [keypair];
+					keypairs = [keys];
 				}
 
 				try {

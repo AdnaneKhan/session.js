@@ -1,11 +1,11 @@
 import type { SnodeSignatureResult } from "@session.js/types/snode-signature-result";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex } from "@noble/ciphers/utils.js";
-import type { SodiumKeypair } from "@session.js/keypair";
+import type { KeyPair } from "@session.js/keypair";
 import { base64 } from "@scure/base";
 
 export function getSnodeSignatureParams(params: {
-	ed25519Key: SodiumKeypair;
+	ed25519Key: KeyPair;
 	namespace: number | null | "all"; // 'all' can be used to clear all namespaces (during account deletion)
 	method: "retrieve" | "store" | "delete_all";
 }): SnodeSignatureResult {

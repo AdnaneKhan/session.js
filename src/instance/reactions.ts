@@ -84,7 +84,7 @@ async function sendReactionMessage(
 		SnodeNamespaces.UserMessages,
 	);
 	const [wrappedMessage, syncWrappedMessage] = await wrap(
-		this.keypair!,
+		this.keys!,
 		[
 			{
 				destination: messageAuthor,

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { decode } from "@session.js/mnemonic";
-import { getKeypairFromSeed } from "@session.js/keypair";
+import { getKeysFromSeed } from "@session.js/keypair";
 import { ready } from "@/index";
 import { bytesToHex } from "@noble/ciphers/utils.js";
 await ready;
@@ -30,8 +30,8 @@ const tests = [
 test("mnemonic -> session id correct", () => {
 	tests.forEach(({ mnemonic, sessionID }) => {
 		const seed = decode(mnemonic);
-		const keypair = getKeypairFromSeed(seed);
-		const generatedSessionID = bytesToHex(keypair.x25519.publicKey);
+		const keys = getKeysFromSeed(seed);
+		const generatedSessionID = bytesToHex(keys.x25519.publicKey);
 		expect(generatedSessionID).toBe(sessionID);
 	});
 });

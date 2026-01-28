@@ -8,7 +8,7 @@ import { bunNetworkModule } from "@/initializers";
 
 import { RequestType } from "@session.js/types/network/request";
 
-import type { Keypair } from "@session.js/keypair";
+import type { SessionKeys } from "@session.js/keypair";
 import type { Snode } from "@session.js/types/snode";
 import type { Swarm } from "@session.js/types/swarm";
 import type { Poller } from "@/polling";
@@ -35,7 +35,7 @@ import { downloadAvatar, type Profile } from "@/profile";
 
 export class Session {
 	protected mnemonic: string | undefined;
-	protected keypair: Keypair | undefined;
+	protected keys: SessionKeys | undefined;
 	protected sessionID: string | undefined;
 	protected displayName: string | undefined;
 	protected avatar: Profile["avatar"];
@@ -80,7 +80,7 @@ export class Session {
 
 	/** Returns mnemonic of this instance or undefined, if you haven't set it with setMnemonic yet */
 	public getMnemonic = getMnemonic.bind(this);
-	/** Sets mnemonic for this instance, parses it to keypair. Throws SessionValidationError if mnemonic is invalid. Make sure you call this method only once, otherwise it will throw SessionRuntimeError */
+	/** Sets mnemonic for this instance, parses it to keypairs. Throws SessionValidationError if mnemonic is invalid. Make sure you call this method only once, otherwise it will throw SessionRuntimeError */
 	public setMnemonic = setMnemonic.bind(this);
 
 	/** Returns Session ID of this instance. Throws if you haven't set user with setMnemonic yet */
@@ -125,9 +125,9 @@ export class Session {
 	 */
 	public downloadAvatar = downloadAvatar.bind(this);
 
-	/** Returns Session.keypair of this instance. Returns undefined if you haven't initialized this instance with mnemonic yet. */
-	getKeypair() {
-		return this.keypair;
+	/** Returns Session keys of this instance (ed25519 and x25519 keypairs). Returns undefined if you haven't initialized this instance with mnemonic yet. */
+	getKeys() {
+		return this.keys;
 	}
 
 	/** Advanced use. Returns current timestamp just like Date.now() but with network connection offset */

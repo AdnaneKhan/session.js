@@ -48,7 +48,7 @@ export async function sendMessage(
 		};
 	},
 ): Promise<{ messageHash: string; syncMessageHash: string; timestamp: number }> {
-	if (!this.sessionID || !this.keypair)
+	if (!this.sessionID || !this.keys)
 		throw new SessionRuntimeError({
 			code: SessionRuntimeErrorCode.EmptyUser,
 			message: "Instance is not initialized; use setMnemonic first",
@@ -172,7 +172,7 @@ export async function sendMessage(
 	const rawSyncMessage = toRawMessage(this.sessionID, syncMessage, SnodeNamespaces.UserMessages);
 
 	const [messageEncrypted, syncMessageEncrypted] = await wrap(
-		this.keypair,
+		this.keys,
 		[
 			{
 				destination: to,

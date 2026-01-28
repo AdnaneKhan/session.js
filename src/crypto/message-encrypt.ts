@@ -5,7 +5,7 @@ import { isNil, toNumber } from "lodash";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { concatBytes, hexToBytes } from "@noble/ciphers/utils.js";
 import { base64 } from "@scure/base";
-import type { Keypair } from "@session.js/keypair";
+import type { SessionKeys } from "@session.js/keypair";
 import { SnodeNamespaces } from "@session.js/types/namespaces";
 import { SessionCryptoError, SessionCryptoErrorCode } from "@session.js/errors";
 import { cryptoBoxSeal } from "./seal";
@@ -16,7 +16,7 @@ export type EncryptResult = {
 };
 
 export async function encrypt(
-	senderKeypair: Keypair,
+	senderKeys: SessionKeys,
 	recipient: string,
 	plainTextBuffer: Uint8Array,
 	encryptionType: SignalService.Envelope.Type,
@@ -48,17 +48,17 @@ export async function encrypt(
 		//   cipherText: cipherTextClosedGroup,
 		// }
 	}
-	const cipherText = await encryptUsingSessionProtocol(senderKeypair, recipient, plainText);
+	const cipherText = await encryptUsingSessionProtocol(senderKeys, recipient, plainText);
 
 	return { envelopeType: SESSION_MESSAGE, cipherText };
 }
 
 async function encryptUsingSessionProtocol(
-	senderKeypair: Keypair,
+	senderKeys: SessionKeys,
 	recipient: string,
 	plaintext: Uint8Array,
 ): Promise<Uint8Array> {
-	const userED25519KeyPairHex = senderKeypair.ed25519;
+	const userED25519KeyPairHex = senderKeys.ed25519;
 	if (
 		!userED25519KeyPairHex ||
 		!userED25519KeyPairHex.publicKey?.length ||
@@ -119,7 +119,7 @@ export type EncryptAndWrapMessageResults = {
 } & SharedEncryptAndWrap;
 
 export async function wrap(
-	senderKeypair: Keypair,
+	senderKeys: SessionKeys,
 	messages: EncryptAndWrapMessage[],
 	{ networkTimestamp }: { networkTimestamp: number },
 ): Promise<EncryptAndWrapMessageResults[]> {
@@ -144,7 +144,7 @@ export async function wrap(
 					: SignalService.Envelope.Type.SESSION_MESSAGE;
 
 				const { envelopeType, cipherText } = await encrypt(
-					senderKeypair,
+					senderKeys,
 					destination,
 					overRiddenTimestampBuffer,
 					encryptionBasedOnConversation,

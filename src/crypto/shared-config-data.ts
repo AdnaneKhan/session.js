@@ -1,5 +1,4 @@
 // import { SignalService } from '@session.js/types/signal-bindings'
-// import sodium, { crypto_secretbox_NONCEBYTES } from 'libsodium-wrappers-sumo'
 
 // export async function generateData(config, keys, compressionLevel = 0) {
 //   // Serialize the configuration

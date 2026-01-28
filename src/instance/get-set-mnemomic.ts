@@ -6,7 +6,7 @@ import {
 	SessionValidationError,
 	SessionValidationErrorCode,
 } from "@session.js/errors";
-import { getKeypairFromSeed } from "@session.js/keypair";
+import { getKeysFromSeed } from "@session.js/keypair";
 import { decode } from "@session.js/mnemonic";
 import { StorageKeys } from "@session.js/types/storage";
 
@@ -26,8 +26,8 @@ export function setMnemonic(this: Session, mnemonic: string, displayName?: strin
 				words.length,
 		});
 	const seed = decode(mnemonic);
-	this.keypair = getKeypairFromSeed(seed);
-	this.sessionID = bytesToHex(this.keypair.x25519.publicKey);
+	this.keys = getKeysFromSeed(seed);
+	this.sessionID = bytesToHex(this.keys.x25519.publicKey);
 	this.mnemonic = mnemonic;
 	if (displayName !== undefined) {
 		this.setDisplayName(displayName);

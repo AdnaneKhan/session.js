@@ -67,7 +67,7 @@ async function sendDataExtractionNotification(
 		SnodeNamespaces.UserMessages,
 	);
 	const [wrappedMessage] = await wrap(
-		this.keypair!,
+		this.keys!,
 		[
 			{
 				destination: conversation,

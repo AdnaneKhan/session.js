@@ -1,24 +1,23 @@
 import type { Session } from "@/instance";
 import { VisibleMessage } from "@/messages/schema/visible-message";
 import { SessionRuntimeError, SessionRuntimeErrorCode } from "@session.js/errors";
-import type { Keypair, SodiumKeypair } from "@session.js/keypair";
+import type { KeyPair, SessionKeys } from "@session.js/keypair";
 import { sign } from "curve25519-js";
 import { RequestType, type RequestSogs } from "@session.js/types/network/request";
 import type { ResponseSogsRequest } from "@session.js/types/network/response";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { sha512 } from "@noble/hashes/sha2.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes, randomBytes, concatBytes } from "@noble/ciphers/utils.js";
 import { base64 } from "@scure/base";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 
 export function blindSessionId(this: Session, serverPk: string): string {
-	if (!this.sessionID || !this.keypair)
+	if (!this.sessionID || !this.keys)
 		throw new SessionRuntimeError({
 			code: SessionRuntimeErrorCode.EmptyUser,
 			message: "Instance is not initialized; use setMnemonic first",
 		});
-	const blindedKeyPair = getBlindingValues(hexToBytes(serverPk), this.keypair.ed25519);
+	const blindedKeyPair = getBlindingValues(hexToBytes(serverPk), this.keys.ed25519);
 	const blindedSessionId = "15" + bytesToHex(blindedKeyPair.publicKey);
 	return blindedSessionId;
 }
@@ -35,7 +34,7 @@ export function encodeSogsMessage(
 		blind: boolean;
 	},
 ): { data: string; signature: string } {
-	if (!this.sessionID || !this.keypair)
+	if (!this.sessionID || !this.keys)
 		throw new SessionRuntimeError({
 			code: SessionRuntimeErrorCode.EmptyUser,
 			message: "Instance is not initialized; use setMnemonic first",
@@ -46,16 +45,16 @@ export function encodeSogsMessage(
 
 	let signature: string;
 	if (blind) {
-		const blindedKeyPair = getBlindingValues(hexToBytes(serverPk), this.keypair.ed25519);
+		const blindedKeyPair = getBlindingValues(hexToBytes(serverPk), this.keys.ed25519);
 		signature = getSignatureWithBlinding({
 			data: paddedBody,
-			keypair: this.keypair,
+			keypair: this.keys,
 			blindedKeyPair,
 		});
 	} else {
 		signature = getSignatureWithoutBlinding({
 			data: paddedBody,
-			keypair: this.keypair,
+			keypair: this.keys,
 		});
 	}
 
@@ -81,7 +80,7 @@ function getPaddedMessageLength(originalLength: number): number {
 	return messagePartCount * 160;
 }
 
-function getSignatureWithoutBlinding({ data, keypair }: { data: Uint8Array; keypair: Keypair }) {
+function getSignatureWithoutBlinding({ data, keypair }: { data: Uint8Array; keypair: SessionKeys }) {
 	const signature = sign(keypair.x25519.privateKey, data, null);
 	return base64.encode(signature);
 }
@@ -97,7 +96,7 @@ function getSignatureWithBlinding({
 		secretKey: Uint8Array;
 		publicKey: Uint8Array;
 	};
-	keypair: Keypair;
+	keypair: SessionKeys;
 }): string {
 	const signature = blindedED25519Signature(
 		data,
@@ -114,55 +113,57 @@ function getSignatureWithBlinding({
 
 export function getBlindingValues(
 	serverPK: Uint8Array,
-	signingKeys: SodiumKeypair,
+	signingKeys: KeyPair,
 ): {
 	a: Uint8Array;
 	secretKey: Uint8Array;
 	publicKey: Uint8Array;
 } {
-	const k = sodium.crypto_core_ed25519_scalar_reduce(
-		blake2b(serverPK, {
-			dkLen: 64,
-		}),
-	);
+	throw new Error("Blinding is not implemented yet.");
+	// const k = sodium.crypto_core_ed25519_scalar_reduce(
+	// 	blake2b(serverPK, {
+	// 		dkLen: 64,
+	// 	}),
+	// );
 
-	let a = sodium.crypto_sign_ed25519_sk_to_curve25519(signingKeys.privateKey);
+	// let a = sodium.crypto_sign_ed25519_sk_to_curve25519(signingKeys.privateKey);
 
-	if (a.length > 32) {
-		a = a.slice(0, 32);
-	}
+	// if (a.length > 32) {
+	// 	a = a.slice(0, 32);
+	// }
 
-	const ka = sodium.crypto_core_ed25519_scalar_mul(k, a);
-	const kA = sodium.crypto_scalarmult_ed25519_base_noclamp(ka);
+	// const ka = sodium.crypto_core_ed25519_scalar_mul(k, a);
+	// const kA = sodium.crypto_scalarmult_ed25519_base_noclamp(ka);
 
-	return {
-		a,
-		secretKey: ka,
-		publicKey: kA,
-	};
+	// return {
+	// 	a,
+	// 	secretKey: ka,
+	// 	publicKey: kA,
+	// };
 }
 
 function blindedED25519Signature(
 	messageParts: Uint8Array,
-	ourKeyPair: SodiumKeypair,
+	ourKeyPair: KeyPair,
 	ka: Uint8Array,
 	kA: Uint8Array,
 ): Uint8Array {
-	const sEncode = ourKeyPair.privateKey.slice(0, 32);
-	const shaFullLength = sha512(sEncode);
-	const Hrh = shaFullLength.slice(32);
-	const r = sodium.crypto_core_ed25519_scalar_reduce(sha512(concatBytes(Hrh, kA, messageParts)));
-	const sigR = sodium.crypto_scalarmult_ed25519_base_noclamp(r);
-	const HRAM = sodium.crypto_core_ed25519_scalar_reduce(
-		sha512(concatBytes(sigR, kA, messageParts)),
-	);
-	const sigS = sodium.crypto_core_ed25519_scalar_add(
-		r,
-		sodium.crypto_core_ed25519_scalar_mul(HRAM, ka),
-	);
+	throw new Error("Blinded signatures are not implemented yet!.");
+	// const sEncode = ourKeyPair.privateKey.slice(0, 32);
+	// const shaFullLength = sha512(sEncode);
+	// const Hrh = shaFullLength.slice(32);
+	// const r = sodium.crypto_core_ed25519_scalar_reduce(sha512(concatBytes(Hrh, kA, messageParts)));
+	// const sigR = sodium.crypto_scalarmult_ed25519_base_noclamp(r);
+	// const HRAM = sodium.crypto_core_ed25519_scalar_reduce(
+	// 	sha512(concatBytes(sigR, kA, messageParts)),
+	// );
+	// const sigS = sodium.crypto_core_ed25519_scalar_add(
+	// 	r,
+	// 	sodium.crypto_core_ed25519_scalar_mul(HRAM, ka),
+	// );
 
-	const fullSig = concatBytes(sigR, sigS);
-	return fullSig;
+	// const fullSig = concatBytes(sigR, sigS);
+	// return fullSig;
 }
 
 export async function signSogsRequest(
@@ -185,7 +186,7 @@ export async function signSogsRequest(
 		body?: string | Uint8Array;
 	},
 ) {
-	if (!this.sessionID || !this.keypair)
+	if (!this.sessionID || !this.keys)
 		throw new SessionRuntimeError({
 			code: SessionRuntimeErrorCode.EmptyUser,
 			message: "Instance is not initialized; use setMnemonic first",
@@ -205,13 +206,13 @@ export async function signSogsRequest(
 		toSign = concatBytes(toSign, bodyHashed);
 	}
 	if (blind) {
-		const blindingValues = getBlindingValues(pk, this.keypair.ed25519);
+		const blindingValues = getBlindingValues(pk, this.keys.ed25519);
 		const ka = blindingValues.secretKey;
 		const kA = blindingValues.publicKey;
-		const signature = await blindedED25519Signature(toSign, this.keypair.ed25519, ka, kA);
+		const signature = await blindedED25519Signature(toSign, this.keys.ed25519, ka, kA);
 		return signature;
 	} else {
-		return ed25519.sign(toSign, this.keypair.ed25519.privateKey);
+		return ed25519.sign(toSign, this.keys.ed25519.privateKey);
 	}
 }
 
@@ -233,7 +234,7 @@ export async function sendSogsRequest(
 		blind: boolean;
 	},
 ) {
-	if (!this.sessionID || !this.keypair)
+	if (!this.sessionID || !this.keys)
 		throw new SessionRuntimeError({
 			code: SessionRuntimeErrorCode.EmptyUser,
 			message: "Instance is not initialized; use setMnemonic first",
@@ -254,7 +255,7 @@ export async function sendSogsRequest(
 	if (blind) {
 		pubkey = this.blindSessionId(serverPk);
 	} else {
-		pubkey = "00" + bytesToHex(this.keypair.ed25519.publicKey);
+		pubkey = "00" + bytesToHex(this.keys.ed25519.publicKey);
 	}
 
 	const contentType =

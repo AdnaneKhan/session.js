@@ -44,7 +44,7 @@ async function updateTypingIndicator(
 	});
 	const rawMessage = toRawMessage(conversation, typingMessage, SnodeNamespaces.UserMessages);
 	const [wrappedMessage] = await wrap(
-		this.keypair!,
+		this.keys!,
 		[
 			{
 				destination: conversation,

@@ -1,7 +1,7 @@
 import { removeMessagePadding } from "@/crypto/message-padding";
 import { SessionCryptoError, SessionCryptoErrorCode } from "@session.js/errors";
 import { SessionValidationError, SessionValidationErrorCode } from "@session.js/errors";
-import type { Keypair } from "@session.js/keypair";
+import type { SessionKeys } from "@session.js/keypair";
 import { SignalService } from "@session.js/types/signal-bindings";
 import type { EnvelopePlus } from "@session.js/types/envelope";
 import { KeyPrefixType } from "@session.js/types/pubkey";
@@ -10,7 +10,6 @@ import { v4 as uuid } from "uuid";
 import { cryptoBoxSealOpen } from "./seal";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, concatBytes } from "@noble/ciphers/utils.js";
-import { ed25519PublicKeyToX25519PublicKey } from "@/crypto/ed25519-to-x25519";
 import { base64 } from "@scure/base";
 
 /** 1. Use **extractContent** with message string in base64 received from swarm
@@ -70,7 +69,7 @@ export function decodeMessage(
 	return envelopePlus;
 }
 
-export function decryptMessage(keypairs: Keypair[], envelope: EnvelopePlus) {
+export function decryptMessage(keypairs: SessionKeys[], envelope: EnvelopePlus) {
 	if (envelope.content.byteLength === 0) {
 		throw new SessionValidationError({
 			code: SessionValidationErrorCode.InvalidMessage,
@@ -97,7 +96,7 @@ export function decryptMessage(keypairs: Keypair[], envelope: EnvelopePlus) {
  * @param envelope the envelope contaning an encrypted .content field to decrypt
  * @returns the decrypted content
  */
-export function decryptEnvelopeWithOurKey(keypair: Keypair, envelope: EnvelopePlus): Uint8Array {
+export function decryptEnvelopeWithOurKey(keypair: SessionKeys, envelope: EnvelopePlus): Uint8Array {
 	try {
 		const retSessionProtocol = decryptWithSessionProtocol(keypair, envelope);
 
@@ -112,7 +111,7 @@ export function decryptEnvelopeWithOurKey(keypair: Keypair, envelope: EnvelopePl
 	}
 }
 
-function decryptForClosedGroup(encryptionKeyPairs: Keypair[], envelope: EnvelopePlus) {
+function decryptForClosedGroup(encryptionKeyPairs: SessionKeys[], envelope: EnvelopePlus) {
 	try {
 		// Loop through all known group key pairs in reverse order (i.e. try the latest key pair first (which'll more than
 		// likely be the one we want) but try older ones in case that didn't work)
@@ -159,7 +158,7 @@ function decryptForClosedGroup(encryptionKeyPairs: Keypair[], envelope: Envelope
  * Instead, it is the caller who needs to removeMessagePadding() the content.
  */
 export function decryptWithSessionProtocol(
-	keypair: Keypair,
+	keypair: SessionKeys,
 	envelope: EnvelopePlus,
 	isClosedGroup?: boolean,
 ): Uint8Array {
@@ -204,7 +203,7 @@ export function decryptWithSessionProtocol(
 	}
 
 	// 4. ) Get the sender's X25519 public key
-	const senderX25519PublicKey = ed25519PublicKeyToX25519PublicKey(senderED25519PublicKey);
+	const senderX25519PublicKey = ed25519.utils.toMontgomery(senderED25519PublicKey);
 	if (!senderX25519PublicKey) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.MessageDecryptionFailed,

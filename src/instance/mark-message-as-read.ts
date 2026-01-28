@@ -23,7 +23,7 @@ export async function markMessagesAsRead(
 	const timestamp = this.getNowWithNetworkOffset();
 	const rawMessage = toRawMessage(from, readReceiptMessage, SnodeNamespaces.UserMessages);
 	const [wrappedMessage] = await wrap(
-		this.keypair!,
+		this.keys!,
 		[
 			{
 				destination: from,

@@ -9,7 +9,7 @@ import { StorageKeys } from "@session.js/types/storage";
 export const forbiddenDisplayCharRegex = /\uFFD2*/g;
 
 export async function setDisplayName(this: Session, displayName: string) {
-	const keypair = this.keypair;
+	const keypair = this.keys;
 	if (!keypair) {
 		throw new SessionValidationError({
 			code: SessionValidationErrorCode.Generic,

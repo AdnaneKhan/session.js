@@ -19,7 +19,7 @@ export async function acceptConversationRequest(
 	const timestamp = this.getNowWithNetworkOffset();
 	const rawMessage = toRawMessage(from, messageRequestResponse, SnodeNamespaces.UserMessages);
 	const [wrappedMessage] = await wrap(
-		this.keypair!,
+		this.keys!,
 		[
 			{
 				destination: from,
