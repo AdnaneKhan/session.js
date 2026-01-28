@@ -18,7 +18,7 @@ export async function encryptProfile(data: Uint8Array, key: Uint8Array): Promise
 		});
 	}
 
-	const cipher = gcm(key, iv, new Uint8Array(0));
+	const cipher = gcm(key, iv);
 	const ciphertext = cipher.encrypt(data);
 
 	const ivAndCiphertext = new Uint8Array(PROFILE_IV_LENGTH + ciphertext.byteLength);

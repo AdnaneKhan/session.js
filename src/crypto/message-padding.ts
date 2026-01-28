@@ -1,6 +1,3 @@
-// CREDIT: OXEN, Session-Desktop
-// github.com/oxen-io/session-desktop
-
 const PADDING_BYTE = 0x00;
 
 export function removeMessagePadding(paddedPlaintext: Uint8Array): Uint8Array {

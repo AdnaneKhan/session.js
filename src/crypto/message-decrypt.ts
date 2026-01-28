@@ -173,7 +173,7 @@ export function decryptWithSessionProtocol(
 		recipientX25519PublicKey,
 		new Uint8Array(keypair.x25519.privateKey),
 	);
-	if (plaintextWithMetadata.byteLength <= signatureSize + ed25519PublicKeySize) {
+	if (plaintextWithMetadata === null || plaintextWithMetadata.byteLength <= signatureSize + ed25519PublicKeySize) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.MessageDecryptionFailed,
 			message: "Decryption failed.",

@@ -1,6 +1,3 @@
-// CREDIT: OXEN, Session-Desktop
-// github.com/oxen-io/session-desktop
-
 import { SignalService } from "@session.js/types/signal-bindings";
 import { DURATION, TTL_DEFAULT } from "@session.js/consts";
 import type { DisappearingMessageType } from "@session.js/types/disappearing-message";
