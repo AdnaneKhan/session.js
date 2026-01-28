@@ -2,7 +2,7 @@
 	"name": "@session.js/client",
 	"type": "module",
 	"description": "Use Session Messenger programmatically. Includes TypeScript and tests.",
-	"version": "0.0.55",
+	"version": "0.0.56",
 	"author": "Viktor Shchelochkov <hi@hloth.dev> (https://hloth.dev)",
 	"repository": {
 		"type": "git",

@@ -22,6 +22,16 @@ Session.js allows you to create:
 
 Visit documentation website for guide: [https://sessionjs.github.io/docs/](https://sessionjs.github.io/docs/)
 
-## Funding
+## Donate
 
-You can donate here: [hloth.dev/donate](https://hloth.dev/donate)
+[hloth.dev/donate](https://hloth.dev/donate) · Tor: [hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate](http://hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate)
+
+PGP-signed list of my crypto wallets: [hloth.dev/donate-pgp-signed.txt](https://hloth.dev/donate-pgp-signed.txt) · Tor: [hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate-pgp-signed.txt](http://hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate-pgp-signed.txt)
+
+## Acknowledgements
+
+- Noble PRs by [li0ard](https://li0ard.rest)
+
+## License
+
+[MIT](./LICENSE)
