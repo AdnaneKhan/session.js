@@ -20,7 +20,7 @@ function sealNonce(ephemeralPk: Uint8Array, recipientPk: Uint8Array): Uint8Array
 	});
 }
 
-export function crypto_box_seal(message: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
+export function cryptoBoxSeal(message: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
 	assertLen("recipientPublicKey", recipientPublicKey, CRYPTO_BOX_PUBLICKEYBYTES);
 
 	const ephemeralSecretKey = x25519.utils.randomSecretKey();
@@ -35,7 +35,7 @@ export function crypto_box_seal(message: Uint8Array, recipientPublicKey: Uint8Ar
 	return concatBytes(ephemeralPublicKey, boxed);
 }
 
-export function crypto_box_seal_open(
+export function cryptoBoxSealOpen(
 	sealed: Uint8Array,
 	recipientPublicKey: Uint8Array,
 	recipientSecretKey: Uint8Array,
@@ -58,6 +58,6 @@ export function crypto_box_seal_open(
 	try {
 		return cipher.decrypt(boxed);
 	} catch {
-		throw new Error("crypto_box_seal_open: decryption failed");
+		throw new Error("cryptoBoxSealOpen: decryption failed");
 	}
 }

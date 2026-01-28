@@ -1,4 +1,3 @@
-import _ from "lodash";
 import pRetry from "p-retry";
 import type { Session } from "@/instance";
 import type { RawMessage } from "@/messages/signal-message";
@@ -6,6 +5,7 @@ import type { EncryptAndWrapMessageResults } from "@/crypto/message-encrypt";
 import type { ResponseStore } from "@session.js/types/network/response";
 import { SessionFetchError, SessionFetchErrorCode } from "@session.js/errors";
 import { RequestType, type RequestStoreBody } from "@session.js/types/network/request";
+import { sample } from "lodash";
 
 export async function _storeMessage(
 	this: Session,
@@ -20,13 +20,13 @@ export async function _storeMessage(
 			let swarm;
 			if (messageToSelf) {
 				if (swarms.length) {
-					swarm = _.sample(swarms);
+					swarm = sample(swarms);
 				} else {
-					swarm = _.sample(this.ourSwarms);
+					swarm = sample(this.ourSwarms);
 					this.ourSwarm = swarm;
 				}
 			} else {
-				swarm = _.sample(swarms);
+				swarm = sample(swarms);
 			}
 			if (!swarm)
 				throw new SessionFetchError({

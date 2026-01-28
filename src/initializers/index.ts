@@ -1,4 +1,3 @@
-import { ready as sodiumLoaded } from "libsodium-wrappers-sumo";
 import { Deferred } from "@/utils";
 
 export let bunNetworkModule: typeof import("@session.js/bun-network");
@@ -12,4 +11,4 @@ if (typeof Bun !== "undefined") {
 	bunNetworkLoaded.resolve();
 }
 
-export const ready = Promise.all([sodiumLoaded, bunNetworkLoaded.promise]);
+export const ready = Promise.all([bunNetworkLoaded.promise]);

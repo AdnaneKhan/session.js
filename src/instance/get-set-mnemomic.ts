@@ -1,5 +1,5 @@
 import type { Session } from "@/instance";
-import { Uint8ArrayToHex } from "@/utils";
+import { bytesToHex } from "@noble/ciphers/utils.js";
 import {
 	SessionRuntimeError,
 	SessionRuntimeErrorCode,
@@ -27,7 +27,7 @@ export function setMnemonic(this: Session, mnemonic: string, displayName?: strin
 		});
 	const seed = decode(mnemonic);
 	this.keypair = getKeypairFromSeed(seed);
-	this.sessionID = Uint8ArrayToHex(this.keypair.x25519.publicKey);
+	this.sessionID = bytesToHex(this.keypair.x25519.publicKey);
 	this.mnemonic = mnemonic;
 	if (displayName !== undefined) {
 		this.setDisplayName(displayName);

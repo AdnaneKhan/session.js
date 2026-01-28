@@ -5,13 +5,13 @@ import type { Keypair } from "@session.js/keypair";
 import { SignalService } from "@session.js/types/signal-bindings";
 import type { EnvelopePlus } from "@session.js/types/envelope";
 import { KeyPrefixType } from "@session.js/types/pubkey";
-import {
-	Uint8ArrayToHex,
-	base64ToUint8Array,
-	concatUInt8Array,
-	removePrefixIfNeeded,
-} from "@/utils";
+import { removePrefixIfNeeded } from "@/utils";
 import { v4 as uuid } from "uuid";
+import { cryptoBoxSealOpen } from "./seal";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { bytesToHex, concatBytes } from "@noble/ciphers/utils.js";
+import { ed25519PublicKeyToX25519PublicKey } from "@/crypto/ed25519-to-x25519";
+import { base64 } from "@scure/base";
 
 /** 1. Use **extractContent** with message string in base64 received from swarm
  * 2. Use **decodeMessage** with the Uint8Array from extractWebSocketContent to decode the message to EnvelopePlus
@@ -19,7 +19,7 @@ import { v4 as uuid } from "uuid";
  */
 export function extractContent(message: string): null | Uint8Array {
 	try {
-		const dataPlaintext = base64ToUint8Array(message);
+		const dataPlaintext = base64.decode(message);
 		const messageBuf = SignalService.WebSocketMessage.decode(dataPlaintext);
 		if (
 			messageBuf.type === SignalService.WebSocketMessage.Type.REQUEST &&
@@ -169,7 +169,7 @@ export function decryptWithSessionProtocol(
 	const ed25519PublicKeySize = 32;
 
 	// 1. ) Decrypt the message
-	const plaintextWithMetadata = sodium.crypto_box_seal_open(
+	const plaintextWithMetadata = cryptoBoxSealOpen(
 		envelope.content,
 		recipientX25519PublicKey,
 		new Uint8Array(keypair.x25519.privateKey),
@@ -191,9 +191,9 @@ export function decryptWithSessionProtocol(
 	const plaintext = plaintextWithMetadata.subarray(0, plainTextEnd);
 
 	// 3. ) Verify the signature
-	const isValid = sodium.crypto_sign_verify_detached(
+	const isValid = ed25519.verify(
 		signature,
-		concatUInt8Array(plaintext, senderED25519PublicKey, recipientX25519PublicKey),
+		concatBytes(plaintext, senderED25519PublicKey, recipientX25519PublicKey),
 		senderED25519PublicKey,
 	);
 	if (!isValid) {
@@ -204,7 +204,7 @@ export function decryptWithSessionProtocol(
 	}
 
 	// 4. ) Get the sender's X25519 public key
-	const senderX25519PublicKey = sodium.crypto_sign_ed25519_pk_to_curve25519(senderED25519PublicKey);
+	const senderX25519PublicKey = ed25519PublicKeyToX25519PublicKey(senderED25519PublicKey);
 	if (!senderX25519PublicKey) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.MessageDecryptionFailed,
@@ -214,9 +214,9 @@ export function decryptWithSessionProtocol(
 
 	// set the sender identity on the envelope itself.
 	if (isClosedGroup) {
-		envelope.senderIdentity = `${KeyPrefixType.standard}${Uint8ArrayToHex(senderX25519PublicKey)}`;
+		envelope.senderIdentity = `${KeyPrefixType.standard}${bytesToHex(senderX25519PublicKey)}`;
 	} else {
-		envelope.source = `${KeyPrefixType.standard}${Uint8ArrayToHex(senderX25519PublicKey)}`;
+		envelope.source = `${KeyPrefixType.standard}${bytesToHex(senderX25519PublicKey)}`;
 	}
 
 	return plaintext;

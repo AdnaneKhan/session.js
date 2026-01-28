@@ -118,7 +118,7 @@ export class Session {
 	 */
 	public setAvatar = setAvatar.bind(this);
 	/**
-	 * Download avatar using URL and key from Profile object. Returns decrypted ArrayBuffer with image data.
+	 * Download avatar using URL and key from Profile object. Returns decrypted Uint8Array with image data.
 	 * Might throw SessionFetchError if there is a connection issue
 	 * Might throw SessionValidationError if avatar's URL is not from Session file server
 	 * @param avatar Avatar object from Profile's object with `url` and `key` properties

@@ -2,7 +2,7 @@ import type { Session } from "@/instance";
 import { uploadAvatar } from "@/profile";
 import { StorageKeys } from "@session.js/types/storage";
 
-export async function setAvatar(this: Session, avatar: ArrayBuffer) {
+export async function setAvatar(this: Session, avatar: Uint8Array) {
 	const { profileKey, avatarPointer } = await uploadAvatar.call(this, avatar);
 	await this.storage.set(
 		StorageKeys.Avatar,

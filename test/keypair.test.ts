@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { decode } from "@session.js/mnemonic";
 import { getKeypairFromSeed } from "@session.js/keypair";
-import { Uint8ArrayToHex } from "@/utils";
 import { ready } from "@/index";
+import { bytesToHex } from "@noble/ciphers/utils.js";
 await ready;
 
 const tests = [
@@ -31,7 +31,7 @@ test("mnemonic -> session id correct", () => {
 	tests.forEach(({ mnemonic, sessionID }) => {
 		const seed = decode(mnemonic);
 		const keypair = getKeypairFromSeed(seed);
-		const generatedSessionID = Uint8ArrayToHex(keypair.x25519.publicKey);
+		const generatedSessionID = bytesToHex(keypair.x25519.publicKey);
 		expect(generatedSessionID).toBe(sessionID);
 	});
 });

@@ -1,5 +1,4 @@
 import type { Session } from "@/instance";
-import { Uint8ArrayToBase64, Uint8ArrayToHex } from "@/utils";
 import {
 	SessionFetchError,
 	SessionFetchErrorCode,
@@ -9,13 +8,14 @@ import {
 import { UnsendMessage } from "@/messages/schema/delete-message";
 import { type RequestDeleteMessages, RequestType } from "@session.js/types/network/request";
 import type { Swarm } from "@session.js/types/swarm";
-import ByteBuffer from "bytebuffer";
-import sodium from "libsodium-wrappers-sumo";
-import _ from "lodash";
 import pRetry from "p-retry";
 import { toRawMessage } from "@/messages/signal-message";
 import { SnodeNamespaces } from "@session.js/types";
 import { wrap } from "@/crypto/message-encrypt";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { bytesToHex } from "@noble/ciphers/utils.js";
+import { base64 } from "@scure/base";
+import { sample } from "lodash";
 
 export async function deleteMessage(
 	this: Session,
@@ -53,19 +53,19 @@ export async function deleteMessages(
  * retrieved them yet */
 async function deleteMessagesFromSwarm(this: Session, { hashes }: { hashes: string[] }) {
 	const keypair = this.keypair!;
-	const verificationData = ByteBuffer.wrap(`delete${hashes.join("")}`, "utf8").toArrayBuffer();
+	const verificationData = new TextEncoder().encode(`delete${hashes.join("")}`);
 	const message = new Uint8Array(verificationData);
-	const signature = sodium.crypto_sign_detached(message, keypair.ed25519.privateKey);
-	const signatureBase64 = Uint8ArrayToBase64(signature);
+	const signature = ed25519.sign(message, keypair.ed25519.privateKey);
+	const signatureBase64 = base64.encode(signature);
 
 	let swarms = [await this.getOurSwarm()];
 	return await pRetry(
 		async () => {
 			let swarm: Swarm | undefined;
 			if (swarms.length) {
-				swarm = _.sample(swarms);
+				swarm = sample(swarms);
 			} else {
-				swarm = _.sample(this.ourSwarms);
+				swarm = sample(this.ourSwarms);
 				this.ourSwarm = swarm;
 			}
 			if (!swarm)
@@ -78,8 +78,8 @@ async function deleteMessagesFromSwarm(this: Session, { hashes }: { hashes: stri
 					type: RequestType.DeleteMessages,
 					body: {
 						hashes,
-						pubkey: Uint8ArrayToHex(keypair.x25519.publicKey),
-						pubkey_ed25519: Uint8ArrayToHex(keypair.ed25519.publicKey),
+						pubkey: bytesToHex(keypair.x25519.publicKey),
+						pubkey_ed25519: bytesToHex(keypair.ed25519.publicKey),
 						signature: signatureBase64,
 						swarm,
 					},

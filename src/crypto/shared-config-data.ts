@@ -18,8 +18,8 @@
 
 //   // Encrypt the message
 //   const key = keys[0]  // Use the first key for encryption
-//   const nonce = sodium.randombytes_buf(crypto_secretbox_NONCEBYTES)
-//   const encryptedMessage = sodium.crypto_secretbox_easy(paddedMessage, nonce, key)
+//   const nonce = randomBytes(crypto_secretbox_NONCEBYTES)
+//   const encryptedMessage = xsalsa20poly1305(key, nonce).encrypt(paddedMessage)
 
 //   // Wrap the configuration (protobuf wrapping example)
 //   const wrappedMessage = wrapConfig(encryptedMessage, nonce, key)

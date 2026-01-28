@@ -1,4 +1,3 @@
-import _ from "lodash";
 import type { Session } from "@/instance";
 import { Poller } from "@/polling";
 import { StorageKeys } from "@session.js/types/storage";
@@ -17,6 +16,7 @@ import {
 	mapCallMessage,
 	type SyncMessage,
 } from "@/messages";
+import { isEqual, sample } from "lodash";
 
 export function addPoller(this: Session, poller: Poller) {
 	if (!(poller instanceof Poller))
@@ -143,7 +143,7 @@ export function addPoller(this: Session, poller: Poller) {
 						key: syncedProfileKey,
 						url: syncedProfilePicture,
 					};
-					if (!_.isEqual(this.avatar, avatar)) {
+					if (!isEqual(this.avatar, avatar)) {
 						this._emit("syncAvatar", avatar);
 					}
 					this.avatar = avatar;
@@ -178,7 +178,7 @@ export function addPoller(this: Session, poller: Poller) {
 		storage: this.storage,
 		onSwarmConnectionFailed: (swarm: Swarm) => {
 			this.ourSwarms = this.ourSwarms?.filter((s) => s !== swarm);
-			const nextSwarm = _.sample(this.ourSwarms);
+			const nextSwarm = sample(this.ourSwarms);
 			this.ourSwarm = nextSwarm;
 			return nextSwarm;
 		},

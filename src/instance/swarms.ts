@@ -1,4 +1,3 @@
-import _ from "lodash";
 import pRetry from "p-retry";
 import type { Session } from "@/instance";
 import {
@@ -9,12 +8,13 @@ import {
 } from "@session.js/errors";
 import type { ResponseGetSwarms } from "@session.js/types/network/response";
 import { RequestType, type RequestGetSwarmsBody } from "@session.js/types/network/request";
+import { sample } from "lodash";
 
 export async function getSwarmsFor(this: Session, sessionID: string) {
 	const snodes = await this.getSnodes();
 	return await pRetry(
 		async () => {
-			const snode = _.sample(snodes);
+			const snode = sample(snodes);
 			if (!snode)
 				throw new SessionFetchError({
 					code: SessionFetchErrorCode.NoSnodesAvailable,
@@ -64,7 +64,7 @@ export async function getOurSwarm(this: Session) {
 		return this.ourSwarm;
 	}
 	this.ourSwarms = await this.getSwarmsFor(this.sessionID);
-	this.ourSwarm = _.sample(this.ourSwarms);
+	this.ourSwarm = sample(this.ourSwarms);
 	if (!this.ourSwarm)
 		throw new SessionRuntimeError({
 			code: SessionRuntimeErrorCode.NoSwarmsAvailable,

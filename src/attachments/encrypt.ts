@@ -1,10 +1,12 @@
-import { sign } from "@/crypto/signature";
+import { cbc } from "@noble/ciphers/aes.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { randomBytes } from "@noble/ciphers/utils.js";
 import { MAX_ATTACHMENT_FILESIZE_BYTES } from "@session.js/consts";
 import { SessionCryptoError, SessionCryptoErrorCode } from "@session.js/errors";
 
 export async function encryptFileAttachment(file: File) {
-	return await encryptAttachment(await file.arrayBuffer(), true);
+	return await encryptAttachment(await file.bytes(), true);
 }
 
 export async function encryptLinkPreview() {
@@ -16,19 +18,15 @@ export async function encryptQuote() {
 }
 
 const PADDING_BYTE = 0x00;
-async function encryptAttachment(data: ArrayBuffer, addPadding = false) {
+async function encryptAttachment(data: Uint8Array, addPadding = false) {
 	const pointerKey = randomBytes(64);
 	const iv = randomBytes(16);
 	const padded = addPadding ? addAttachmentPadding(data) : data;
-	const encrypted = await encryptAttachmentData(
-		padded,
-		pointerKey.buffer as ArrayBuffer,
-		iv.buffer as ArrayBuffer,
-	);
+	const encrypted = await encryptAttachmentData(padded, pointerKey, iv);
 	return { ...encrypted, key: pointerKey };
 }
 
-function addAttachmentPadding(data: ArrayBufferLike): ArrayBuffer {
+function addAttachmentPadding(data: Uint8Array): Uint8Array {
 	const originalUInt = new Uint8Array(data);
 
 	let paddedSize = Math.max(
@@ -42,24 +40,21 @@ function addAttachmentPadding(data: ArrayBufferLike): ArrayBuffer {
 	) {
 		paddedSize = MAX_ATTACHMENT_FILESIZE_BYTES;
 	}
-	const paddedData = new ArrayBuffer(paddedSize);
-	const paddedUInt = new Uint8Array(paddedData);
+	const paddedData = new Uint8Array(paddedSize);
 
-	paddedUInt.fill(PADDING_BYTE, originalUInt.length);
-	paddedUInt.set(originalUInt);
+	paddedData.fill(PADDING_BYTE, originalUInt.length);
+	paddedData.set(originalUInt);
 
-	return paddedUInt.buffer as ArrayBuffer;
+	return paddedData;
 }
 
 export async function encryptAttachmentData(
-	plaintext: ArrayBuffer,
-	keys: ArrayBuffer,
-	iv: ArrayBuffer,
+	plaintext: Uint8Array,
+	keys: Uint8Array,
+	iv: Uint8Array,
 ) {
-	if (!(plaintext instanceof ArrayBuffer) && !ArrayBuffer.isView(plaintext)) {
-		throw new TypeError(
-			`\`plaintext\` must be an \`ArrayBuffer\` or \`ArrayBufferView\`; got: ${typeof plaintext}`,
-		);
+	if (!(plaintext instanceof Uint8Array)) {
+		throw new TypeError(`\`plaintext\` must be an \`Uint8Array\`; got: ${typeof plaintext}`);
 	}
 
 	if (keys.byteLength !== 64) {
@@ -74,38 +69,25 @@ export async function encryptAttachmentData(
 			message: "Got invalid length attachment iv",
 		});
 	}
+
 	const aesKey = keys.slice(0, 32);
 	const macKey = keys.slice(32, 64);
 
-	return encrypt(aesKey, plaintext, iv).then(async (ciphertext: any) => {
-		const ivAndCiphertext = new Uint8Array(16 + ciphertext.byteLength);
-		ivAndCiphertext.set(new Uint8Array(iv));
-		ivAndCiphertext.set(new Uint8Array(ciphertext), 16);
+	const ciphertext = cbc(aesKey, iv).encrypt(plaintext);
+	const ivAndCiphertext = new Uint8Array(16 + ciphertext.byteLength);
+	ivAndCiphertext.set(new Uint8Array(iv));
+	ivAndCiphertext.set(new Uint8Array(ciphertext), 16);
 
-		return calculateMAC(macKey, ivAndCiphertext.buffer).then(async (mac: any) => {
-			const encryptedBin = new Uint8Array(16 + ciphertext.byteLength + 32);
-			encryptedBin.set(ivAndCiphertext);
-			encryptedBin.set(new Uint8Array(mac), 16 + ciphertext.byteLength);
-			return calculateDigest(encryptedBin.buffer as ArrayBuffer).then((digest) => ({
-				ciphertext: encryptedBin.buffer as ArrayBuffer,
-				digest,
-			}));
-		});
-	});
-}
+	const mac = hmac(sha256, new Uint8Array(macKey), ivAndCiphertext);
 
-async function encrypt(key: any, data: any, iv: any) {
-	return crypto.subtle
-		.importKey("raw", key, { name: "AES-CBC" }, false, ["encrypt"])
-		.then(async (secondKey) => {
-			return crypto.subtle.encrypt({ name: "AES-CBC", iv: new Uint8Array(iv) }, secondKey, data);
-		});
-}
+	const encryptedBin = new Uint8Array(16 + ciphertext.byteLength + 32);
+	encryptedBin.set(ivAndCiphertext);
+	encryptedBin.set(new Uint8Array(mac), 16 + ciphertext.byteLength);
 
-async function calculateMAC(key: any, data: any) {
-	return sign(key, data);
-}
+	const digest = sha256(encryptedBin);
 
-async function calculateDigest(data: ArrayBuffer) {
-	return crypto.subtle.digest({ name: "SHA-256" }, data);
+	return {
+		ciphertext: encryptedBin,
+		digest,
+	};
 }

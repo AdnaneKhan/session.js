@@ -13,7 +13,6 @@ import {
 	type AttachmentPointerWithUrl,
 	type Quote,
 } from "@/messages/schema/visible-message";
-import { isHex } from "@/utils";
 import type { ResponseUploadAttachment } from "@session.js/types/network/response";
 import { RequestType, type RequestUploadAttachment } from "@session.js/types/network/request";
 import { SnodeNamespaces } from "@session.js/types";
@@ -59,7 +58,7 @@ export async function sendMessage(
 			code: SessionValidationErrorCode.InvalidSessionID,
 			message: "Invalid session ID length",
 		});
-	if (!to.startsWith("05") || !isHex(to))
+	if (!to.startsWith("05") || !/^([0-9a-f]{2})+$/i.test(to))
 		throw new SessionValidationError({
 			code: SessionValidationErrorCode.InvalidSessionID,
 			message: "Session ID must be a hex string starting from 05",

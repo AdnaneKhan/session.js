@@ -1,10 +1,11 @@
 import type { SnodeSignatureResult } from "@session.js/types/snode-signature-result";
-import { Uint8ArrayToBase64, Uint8ArrayToHex } from "@/utils";
-import ByteBuffer from "bytebuffer";
-import sodium, { type KeyPair } from "libsodium-wrappers-sumo";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { bytesToHex } from "@noble/ciphers/utils.js";
+import type { SodiumKeypair } from "@session.js/keypair";
+import { base64 } from "@scure/base";
 
 export function getSnodeSignatureParams(params: {
-	ed25519Key: KeyPair;
+	ed25519Key: SodiumKeypair;
 	namespace: number | null | "all"; // 'all' can be used to clear all namespaces (during account deletion)
 	method: "retrieve" | "store" | "delete_all";
 }): SnodeSignatureResult {
@@ -14,28 +15,15 @@ export function getSnodeSignatureParams(params: {
 
 	const withoutNamespace = `${params.method}${signatureTimestamp}`;
 	const withNamespace = `${params.method}${namespace}${signatureTimestamp}`;
-	const verificationData =
-		namespace === 0
-			? ByteBuffer.wrap(withoutNamespace, "utf8").toArrayBuffer()
-			: ByteBuffer.wrap(withNamespace, "utf8").toArrayBuffer();
-
-	const message = new Uint8Array(verificationData);
-
-	const signature = sodium.crypto_sign_detached(message, params.ed25519Key.privateKey);
-	const signatureBase64 = Uint8ArrayToBase64(signature);
+	const verificationData = namespace === 0 ? withoutNamespace : withNamespace;
+	const message = new TextEncoder().encode(verificationData);
+	const signature = ed25519.sign(message, params.ed25519Key.privateKey);
+	const signatureBase64 = base64.encode(signature);
 
 	return {
 		// sig_timestamp: signatureTimestamp,
 		timestamp: signatureTimestamp,
 		signature: signatureBase64,
-		pubkeyEd25519: Uint8ArrayToHex(params.ed25519Key.publicKey),
+		pubkeyEd25519: bytesToHex(params.ed25519Key.publicKey),
 	};
-}
-
-export async function sign(key: any, data: any) {
-	return crypto.subtle
-		.importKey("raw", key, { name: "HMAC", hash: { name: "SHA-256" } }, false, ["sign"])
-		.then(async (secondKey) => {
-			return crypto.subtle.sign({ name: "HMAC", hash: "SHA-256" }, secondKey, data);
-		});
 }

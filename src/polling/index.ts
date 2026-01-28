@@ -1,4 +1,3 @@
-import _ from "lodash";
 import { z } from "zod";
 import { SignalService } from "@session.js/types/signal-bindings";
 import { StorageKeys, type Storage } from "@session.js/types/storage";
@@ -18,6 +17,7 @@ import type { Keypair } from "@session.js/keypair";
 import { decodeMessage, decryptMessage, extractContent } from "@/crypto/message-decrypt";
 import { getSnodeSignatureParams } from "@/crypto/signature";
 import type { Session } from "@/instance";
+import { compact, flatten, last, uniqBy } from "lodash";
 
 // SnodeNamespaces.ClosedGroupMessage is legacy
 const allNamespaces = new Set([
@@ -197,17 +197,17 @@ export class Poller {
 			}
 		} while (messages === undefined);
 
-		const userConfigMessages = _.flatten(
-			_.compact(
+		const userConfigMessages = flatten(
+			compact(
 				messages
 					.filter((m) => SnodeNamespace.isUserConfigNamespace(m.namespace))
 					.map((r) => r.messages),
 			),
 		);
 
-		const dataMessagesEncrypted = _.uniqBy(
-			_.flatten(
-				_.compact(
+		const dataMessagesEncrypted = uniqBy(
+			flatten(
+				compact(
 					messages
 						.filter((m) => !SnodeNamespace.isUserConfigNamespace(m.namespace))
 						.map((r) => r.messages),
@@ -223,7 +223,7 @@ export class Poller {
 			.filter((m) => m.messages.length > 0)
 			.map((m) => ({
 				namespace: m.namespace,
-				lastHash: _.last(m.messages)!.hash,
+				lastHash: last(m.messages)!.hash,
 			}));
 
 		const dataMessagesDecrypted = [...dataMessagesEncrypted, ...userConfigMessages]

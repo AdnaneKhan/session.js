@@ -1,6 +1,7 @@
 import type { Session } from "@/instance";
 import { decryptProfile } from "@/profile/decrypt";
 import { encryptProfile } from "@/profile/encrypt";
+import { randomBytes } from "@noble/ciphers/utils.js";
 import { SessionValidationError, SessionValidationErrorCode } from "@session.js/errors";
 import {
 	type RequestDownloadAttachment,
@@ -9,7 +10,6 @@ import {
 } from "@session.js/types/network/request";
 import type { ResponseUploadAttachment } from "@session.js/types/network/response";
 import { SignalService } from "@session.js/types/signal-bindings";
-import sodium from "libsodium-wrappers-sumo";
 
 export const PROFILE_IV_LENGTH = 12; // bytes
 export const PROFILE_KEY_LENGTH = 32; // bytes
@@ -54,7 +54,7 @@ export function serializeProfile(profile: Profile): SignalILokiProfile {
 export async function downloadAvatar(
 	this: Session,
 	avatar: NonNullable<Profile["avatar"]>,
-): Promise<ArrayBuffer> {
+): Promise<Uint8Array> {
 	const fileServerURL = "http://filev2.getsession.org/file/";
 	if (!avatar.url.startsWith(fileServerURL)) {
 		throw new SessionValidationError({
@@ -69,7 +69,7 @@ export async function downloadAvatar(
 			message: "Invalid avatar file ID",
 		});
 	}
-	const avatarFile = await this._request<ArrayBuffer, RequestDownloadAttachment>({
+	const avatarFile = await this._request<Uint8Array, RequestDownloadAttachment>({
 		type: RequestType.DownloadAttachment,
 		body: {
 			id: fileId,
@@ -94,8 +94,8 @@ export function deserializeProfile(signalILokiProfile: SignalILokiProfile): Prof
 	return profile;
 }
 
-export async function uploadAvatar(this: Session, avatar: ArrayBuffer) {
-	const profileKey = await sodium.randombytes_buf(32);
+export async function uploadAvatar(this: Session, avatar: Uint8Array) {
+	const profileKey = randomBytes(32);
 	const encryptedAvatar = await encryptProfile(avatar, profileKey);
 	const uploadRequest = await this._request<ResponseUploadAttachment, RequestUploadAttachment>({
 		type: RequestType.UploadAttachment,

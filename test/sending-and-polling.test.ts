@@ -17,9 +17,9 @@ session.addPoller(poller);
 const randomText = (Math.random() + 1).toString(36).substring(2);
 
 const randomImageBuffer = await fetch("https://picsum.photos/200/300").then((response) =>
-	response.arrayBuffer(),
+	response.bytes(),
 );
-const randomImage = new File([new Uint8Array(randomImageBuffer)], "random-image.jpg", {
+const randomImage = new File([randomImageBuffer], "random-image.jpg", {
 	type: "image/jpeg",
 });
 
@@ -61,8 +61,8 @@ test("polling chat messages", async () => {
 	expect(image.name).toBe(randomImage.name);
 	expect(image.size).toBe(randomImage.size);
 
-	const imageBuffer = new Uint8Array(await image.arrayBuffer());
-	const randomImageBuffer = new Uint8Array(await randomImage.arrayBuffer());
+	const imageBuffer = await image.bytes();
+	const randomImageBuffer = await randomImage.bytes();
 	expect(Buffer.compare(imageBuffer, randomImageBuffer)).toBe(0);
 });
 

@@ -1,7 +1,8 @@
 import { PROFILE_IV_LENGTH, PROFILE_KEY_LENGTH, PROFILE_TAG_LENGTH } from "@/profile";
+import { gcm } from "@noble/ciphers/aes.js";
 import { SessionCryptoError, SessionCryptoErrorCode } from "@session.js/errors";
 
-export async function decryptProfile(data: ArrayBuffer, key: Uint8Array): Promise<ArrayBuffer> {
+export async function decryptProfile(data: Uint8Array, key: Uint8Array): Promise<Uint8Array> {
 	if (data.byteLength < 12 + 16 + 1) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.AttachmentDecryptionFailed,
@@ -26,20 +27,6 @@ export async function decryptProfile(data: ArrayBuffer, key: Uint8Array): Promis
 		code: SessionCryptoErrorCode.MessageDecryptionFailed,
 		message: "Failed to decrypt profile data",
 	});
-	return await crypto.subtle
-		.importKey("raw", key, { name: "AES-GCM" }, false, ["decrypt"])
-		.then((keyForEncryption) =>
-			crypto.subtle
-				.decrypt(
-					{ name: "AES-GCM", iv, tagLength: PROFILE_TAG_LENGTH },
-					keyForEncryption,
-					ciphertext,
-				)
-				.catch((e) => {
-					if (e.name === "OperationError") {
-						// bad mac
-					}
-					throw error;
-				}),
-		);
+
+	return gcm(key, iv).decrypt(ciphertext);
 }

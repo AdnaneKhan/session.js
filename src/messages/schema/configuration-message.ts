@@ -8,7 +8,7 @@
 import { SignalService } from "@session.js/types/signal-bindings";
 import { ContentMessage, type MessageParams } from "../signal-message";
 import { SessionValidationError, SessionValidationErrorCode } from "@session.js/errors";
-import { hexToUint8Array } from "@/utils";
+import { hexToBytes } from "@noble/ciphers/utils.js";
 
 interface ConfigurationMessageParams extends MessageParams {
 	activeClosedGroups: Array<ConfigurationMessageClosedGroup>;
@@ -234,8 +234,8 @@ export class ConfigurationMessageClosedGroup {
 				publicKey: this.encryptionKeyPair.publicKeyData,
 				privateKey: this.encryptionKeyPair.privateKeyData,
 			},
-			members: this.members.map(hexToUint8Array),
-			admins: this.admins.map(hexToUint8Array),
+			members: this.members.map(hexToBytes),
+			admins: this.admins.map(hexToBytes),
 		});
 	}
 }

@@ -1,4 +1,6 @@
-import { sign } from "@/crypto/signature";
+import { cbc } from "@noble/ciphers/aes.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import {
 	SessionCryptoError,
 	SessionCryptoErrorCode,
@@ -7,18 +9,18 @@ import {
 } from "@session.js/errors";
 
 export async function decryptAttachment(
-	data: ArrayBuffer,
+	data: Uint8Array,
 	{
 		size,
-		keyBuffer,
-		digestBuffer,
+		key,
+		digest,
 	}: {
 		size?: number;
-		keyBuffer: Uint8Array;
-		digestBuffer: Uint8Array;
+		key: Uint8Array;
+		digest: Uint8Array;
 	},
 ) {
-	if (keyBuffer.byteLength !== 64) {
+	if (key.byteLength !== 64) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.AttachmentDecryptionFailed,
 			message: "Got invalid length attachment keys",
@@ -31,17 +33,17 @@ export async function decryptAttachment(
 		});
 	}
 
-	const aesKey = keyBuffer.slice(0, 32);
-	const macKey = keyBuffer.slice(32, 64);
+	const aesKey = key.slice(0, 32);
+	const macKey = key.slice(32, 64);
 
 	const iv = data.slice(0, 16);
 	const ciphertext = data.slice(16, data.byteLength - 32);
 	const ivAndCiphertext = data.slice(0, data.byteLength - 32);
 	const mac = data.slice(data.byteLength - 32, data.byteLength);
 
-	await verifyMAC(ivAndCiphertext, macKey, mac, 32);
-	await verifyDigest(data, digestBuffer);
-	let decryptedData = await decrypt(aesKey, ciphertext, iv);
+	verifyMAC(ivAndCiphertext, macKey, mac, 32);
+	verifyDigest(data, digest);
+	let decryptedData = decrypt(aesKey, ciphertext, iv);
 
 	if (size !== undefined && size !== data.byteLength) {
 		if (size < data.byteLength) {
@@ -57,50 +59,43 @@ export async function decryptAttachment(
 	return decryptedData;
 }
 
-async function verifyMAC(data: any, key: any, mac: any, length: any) {
-	return sign(key, data).then((calculatedMac) => {
-		if (mac.byteLength !== length || calculatedMac.byteLength < length) {
-			throw new SessionCryptoError({
-				code: SessionCryptoErrorCode.MessageDecryptionFailed,
-				message: "Bad attachment MAC",
-			});
-		}
-		const a = new Uint8Array(calculatedMac);
-		const b = new Uint8Array(mac);
-		let result = 0;
-		for (let i = 0; i < mac.byteLength; ++i) {
-			result |= a[i] ^ b[i];
-		}
-		if (result !== 0) {
-			throw new SessionCryptoError({
-				code: SessionCryptoErrorCode.MessageDecryptionFailed,
-				message: "Bad attachment MAC",
-			});
-		}
-	});
-}
-
-async function verifyDigest(data: ArrayBuffer, theirDigest: Uint8Array) {
-	return crypto.subtle.digest({ name: "SHA-256" }, data).then((ourDigest) => {
-		const a = new Uint8Array(ourDigest);
-		const b = theirDigest;
-		let result = 0;
-		for (let i = 0; i < theirDigest.byteLength; i += 1) {
-			result |= a[i] ^ b[i];
-		}
-		if (result !== 0) {
-			throw new SessionCryptoError({
-				code: SessionCryptoErrorCode.MessageDecryptionFailed,
-				message: "Bad attachment digest",
-			});
-		}
-	});
-}
-
-async function decrypt(key: any, data: any, iv: any) {
-	return crypto.subtle
-		.importKey("raw", key, { name: "AES-CBC" }, false, ["decrypt"])
-		.then(async (secondKey) => {
-			return crypto.subtle.decrypt({ name: "AES-CBC", iv: new Uint8Array(iv) }, secondKey, data);
+function verifyMAC(data: Uint8Array, key: Uint8Array, mac: Uint8Array, length: number) {
+	const calculatedMac = hmac(sha256, key, data);
+	if (mac.byteLength !== length || calculatedMac.byteLength < length) {
+		throw new SessionCryptoError({
+			code: SessionCryptoErrorCode.MessageDecryptionFailed,
+			message: "Bad attachment MAC",
 		});
+	}
+	const a = new Uint8Array(calculatedMac);
+	const b = new Uint8Array(mac);
+	let result = 0;
+	for (let i = 0; i < mac.byteLength; ++i) {
+		result |= a[i] ^ b[i];
+	}
+	if (result !== 0) {
+		throw new SessionCryptoError({
+			code: SessionCryptoErrorCode.MessageDecryptionFailed,
+			message: "Bad attachment MAC",
+		});
+	}
+}
+
+function verifyDigest(data: Uint8Array, theirDigest: Uint8Array) {
+	const ourDigest = sha256(data);
+	const b = theirDigest;
+	let result = 0;
+	for (let i = 0; i < theirDigest.byteLength; i += 1) {
+		result |= ourDigest[i] ^ b[i];
+	}
+	if (result !== 0) {
+		throw new SessionCryptoError({
+			code: SessionCryptoErrorCode.MessageDecryptionFailed,
+			message: "Bad attachment digest",
+		});
+	}
+}
+
+function decrypt(key: Uint8Array, data: Uint8Array, iv: Uint8Array) {
+	return cbc(key, iv).decrypt(data);
 }

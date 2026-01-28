@@ -11,16 +11,16 @@ export async function getFile(this: Session, attachment: MessageAttachment): Pro
 			message: "Missing attachment key or digest",
 		});
 	}
-	const fileBuffer = await this._request<ArrayBuffer, RequestDownloadAttachment>({
+	const fileBuffer = await this._request<Uint8Array, RequestDownloadAttachment>({
 		type: RequestType.DownloadAttachment,
 		body: { id: attachment.id },
 	});
 	const decryptedData = await decryptAttachment(fileBuffer, {
 		size: attachment.size,
-		keyBuffer: attachment._key,
-		digestBuffer: attachment._digest,
+		key: attachment._key,
+		digest: attachment._digest,
 	});
-	return new File([decryptedData], attachment.name || "", {
+	return new File([new Uint8Array(decryptedData)], attachment.name || "", {
 		type: attachment.metadata.contentType || "application/octet-stream",
 	});
 }

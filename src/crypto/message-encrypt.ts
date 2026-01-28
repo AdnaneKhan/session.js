@@ -1,12 +1,14 @@
 import { SignalService } from "@session.js/types/signal-bindings";
 import { addMessagePadding } from "./message-padding";
-import { concatUInt8Array, hexToUint8Array, removePrefixIfNeeded } from "../utils";
-import sodium from "libsodium-wrappers-sumo";
+import { removePrefixIfNeeded } from "../utils";
+import { isNil, toNumber } from "lodash";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { concatBytes, hexToBytes } from "@noble/ciphers/utils.js";
+import { base64 } from "@scure/base";
 import type { Keypair } from "@session.js/keypair";
-import _ from "lodash";
 import { SnodeNamespaces } from "@session.js/types/namespaces";
-import ByteBuffer from "bytebuffer";
 import { SessionCryptoError, SessionCryptoErrorCode } from "@session.js/errors";
+import { cryptoBoxSeal } from "./seal";
 
 export type EncryptResult = {
 	envelopeType: SignalService.Envelope.Type;
@@ -68,15 +70,15 @@ async function encryptUsingSessionProtocol(
 		});
 	}
 
-	const recipientX25519PublicKey = hexToUint8Array(removePrefixIfNeeded(recipient));
+	const recipientX25519PublicKey = hexToBytes(removePrefixIfNeeded(recipient));
 
-	const verificationData = concatUInt8Array(
+	const verificationData = concatBytes(
 		plaintext,
 		userED25519KeyPairHex.publicKey,
 		recipientX25519PublicKey,
 	);
 
-	const signature = sodium.crypto_sign_detached(verificationData, userED25519KeyPairHex.privateKey);
+	const signature = ed25519.sign(verificationData, userED25519KeyPairHex.privateKey);
 	if (!signature || signature.length === 0) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.MessageEncryptionFailed,
@@ -84,13 +86,9 @@ async function encryptUsingSessionProtocol(
 		});
 	}
 
-	const plaintextWithMetadata = concatUInt8Array(
-		plaintext,
-		userED25519KeyPairHex.publicKey,
-		signature,
-	);
+	const plaintextWithMetadata = concatBytes(plaintext, userED25519KeyPairHex.publicKey, signature);
 
-	const ciphertext = sodium.crypto_box_seal(plaintextWithMetadata, recipientX25519PublicKey);
+	const ciphertext = cryptoBoxSeal(plaintextWithMetadata, recipientX25519PublicKey);
 	if (!ciphertext) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.MessageEncryptionFailed,
@@ -160,13 +158,13 @@ export async function wrap(
 				);
 
 				const data = wrapEnvelope(envelope);
-				const data64 = ByteBuffer.wrap(data).toString("base64");
+				const data64 = base64.encode(data);
 
 				// override the namespaces if those are unset in the incoming messages
 				// right when we upgrade from not having namespaces stored in the outgoing cached messages our messages won't have a namespace associated.
 				// So we need to keep doing the lookup of where they should go if the namespace is not set.
 
-				const overridenNamespace = !_.isNil(namespace)
+				const overridenNamespace = !isNil(namespace)
 					? namespace
 					: isGroup
 						? SnodeNamespaces.ClosedGroupMessage
@@ -194,12 +192,12 @@ async function overwriteOutgoingTimestampWithNetworkTimestamp(
 	const contentDecoded = SignalService.Content.decode(plainTextBuffer);
 
 	const { dataMessage, dataExtractionNotification, typingMessage } = contentDecoded;
-	if (dataMessage && dataMessage.timestamp && _.toNumber(dataMessage.timestamp) > 0) {
+	if (dataMessage && dataMessage.timestamp && toNumber(dataMessage.timestamp) > 0) {
 		// this is a sync message, do not overwrite the message timestamp
 		if (dataMessage.syncTarget) {
 			return {
 				overRiddenTimestampBuffer: plainTextBuffer,
-				networkTimestamp: _.toNumber(dataMessage.timestamp),
+				networkTimestamp: toNumber(dataMessage.timestamp),
 			};
 		}
 		dataMessage.timestamp = networkTimestamp;
@@ -207,11 +205,11 @@ async function overwriteOutgoingTimestampWithNetworkTimestamp(
 	if (
 		dataExtractionNotification &&
 		dataExtractionNotification.timestamp &&
-		_.toNumber(dataExtractionNotification.timestamp) > 0
+		toNumber(dataExtractionNotification.timestamp) > 0
 	) {
 		dataExtractionNotification.timestamp = networkTimestamp;
 	}
-	if (typingMessage && typingMessage.timestamp && _.toNumber(typingMessage.timestamp) > 0) {
+	if (typingMessage && typingMessage.timestamp && toNumber(typingMessage.timestamp) > 0) {
 		typingMessage.timestamp = networkTimestamp;
 	}
 	const overRiddenTimestampBuffer = SignalService.Content.encode(contentDecoded).finish();
