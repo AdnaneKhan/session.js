@@ -6,7 +6,7 @@ import { MAX_ATTACHMENT_FILESIZE_BYTES } from "@session.js/consts";
 import { SessionCryptoError, SessionCryptoErrorCode } from "@session.js/errors";
 
 export async function encryptFileAttachment(file: File) {
-	return await encryptAttachment(await file.bytes(), true);
+	return await encryptAttachment(new Uint8Array(await file.arrayBuffer()), true);
 }
 
 export async function encryptLinkPreview() {
