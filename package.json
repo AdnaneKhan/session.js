@@ -1,21 +1,29 @@
 {
 	"name": "@session.js/client",
-	"version": "0.0.54",
 	"type": "module",
-	"homepage": "https://github.com/sessionjs/client",
+	"description": "Use Session Messenger programmatically. Includes TypeScript and tests.",
+	"version": "0.0.54",
+	"author": "Viktor Shchelochkov <hi@hloth.dev> (https://hloth.dev)",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/sessionjs/client.git"
+		"url": "git+https://git.hloth.dev/session.js/client.git"
 	},
 	"bugs": {
-		"url": "https://github.com/sessionjs/client/issues"
+		"url": "https://git.hloth.dev/session.js/client/issues"
 	},
+	"homepage": "https://git.hloth.dev/session.js/client",
 	"license": "MIT",
+	"funding": "https://hloth.dev/donate",
 	"scripts": {
 		"build": "rm -rf dist && tsc --project tsconfig.publish.json && tsc-alias -p tsconfig.publish.json --resolve-full-paths"
 	},
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"files": [
+		"dist/**/*.js",
+		"dist/**/*.d.ts",
+		"README.md"
+	],
 	"exports": {
 		".": "./dist/index.js",
 		"./polling": "./dist/polling/index.js",
@@ -34,11 +42,6 @@
 	"peerDependencies": {
 		"typescript": "^5.0.0"
 	},
-	"files": [
-		"dist/**/*.js",
-		"dist/**/*.d.ts",
-		"README.md"
-	],
 	"dependencies": {
 		"@noble/ciphers": "^2.1.1",
 		"@noble/curves": "^2.0.1",
