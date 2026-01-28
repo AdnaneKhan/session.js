@@ -1,6 +1,6 @@
 # Session.js
 
-Session.js is JavaScript library for programmatic usage of [Session messenger by OXEN](https://getsession.org). Supports server and browser environment with built-in proxy network module. Shipped with TypeScript definitions. Tested with bun:test. Written with blazingly fast [Bun](bun.sh), a modern runtime for JavaScript and alternative to Node.js. **This package cannot be used with Node.js, it uses a better runtime instead of it**. It can also be used with most bundlers that support modern syntax.
+Session.js is JavaScript library for programmatic usage of [Session messenger by OXEN](https://getsession.org). Supports server and browser environment with built-in proxy network module. Shipped with TypeScript definitions. Tested with bun:test. Written with blazingly fast [Bun](bun.sh), a modern runtime for JavaScript and alternative to Node.js. **This package cannot be used with Node.js, it uses a better runtime instead of it**. It can also be used with most bundlers that support modern syntax. Now with vanilla [noble](https://paulmillr.com/noble/) instead of wasm libsodium and bytebuffer!
 
 Session.js allows you to create:
 - Highly optimized Session bots (hundreds of bots in a single app)
