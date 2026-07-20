@@ -33,6 +33,24 @@ export const CallMessageType = {
 
 export type CallMessageTypeValue = (typeof CallMessageType)[keyof typeof CallMessageType];
 
+/** Human-readable name of a CallMessage type (logs/diagnostics — P5-T3). */
+export function callMessageTypeName(type: CallMessageTypeValue): string {
+	switch (type) {
+		case CallMessageType.PRE_OFFER:
+			return "PRE_OFFER";
+		case CallMessageType.OFFER:
+			return "OFFER";
+		case CallMessageType.ANSWER:
+			return "ANSWER";
+		case CallMessageType.PROVISIONAL_ANSWER:
+			return "PROVISIONAL_ANSWER";
+		case CallMessageType.ICE_CANDIDATES:
+			return "ICE_CANDIDATES";
+		case CallMessageType.END_CALL:
+			return "END_CALL";
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Signaling payloads
 // ---------------------------------------------------------------------------

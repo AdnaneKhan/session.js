@@ -13,8 +13,10 @@
 		"node": ">=22"
 	},
 	"scripts": {
-		"build": "tsc -p tsconfig.json",
+		"build": "tsc -p tsconfig.json && tsc -p tsconfig.examples.json",
 		"test": "bun test",
+		"example:echo": "bun examples/offline-echo.ts",
+		"example:agent": "bun examples/voice-agent.ts",
 		"spike": "bun spike/werift-loopback.ts",
 		"spike:turn": "bun spike/turn-connectivity.ts"
 	},

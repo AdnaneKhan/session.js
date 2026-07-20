@@ -24,8 +24,43 @@ src/supervisor.ts
   `org/session/libsession/messaging/calls/CallMessageProcessor.kt` (GPLv3)
   and session-desktop `ts/receiver/callMessage.ts` (AGPLv3), © Session
   Foundation, modified (adapted to structural SessionLike/SignalingSender/
-  MediaEngine interfaces; single-device headless operation). Licensed under
+  MediaEngine interfaces; single-device headless operation).
+  The mid-call ICE reconnect behavior (P6-T1: initiator restart loop,
+  non-initiator ≤60 s wait, exhaustion handling) is ported from
+  session-android `webrtc/WebRtcCallBridge.kt` /
+  `webrtc/PeerConnectionWrapper.kt` (GPLv3), © Session Foundation,
+  modified. Licensed under AGPL-3.0-or-later.
+
+src/call.ts
+  The public Call handle's sequencing and edge-case behavior (inbound-only
+  action guards, consumer-callback containment) adapted from session-desktop
+  `ts/session/utils/calling/CallManager.ts` (AGPLv3), © Session Foundation,
+  modified (structural dependency interfaces; werift media plane; headless
+  operation). Licensed under AGPL-3.0-or-later.
+
+src/call-manager.ts
+  Call lifecycle wiring adapted from session-desktop
+  `ts/session/utils/calling/CallManager.ts` (AGPLv3) and the ICE-restart
+  wiring from session-android `webrtc/WebRtcCallBridge.kt` /
+  `webrtc/PeerConnectionWrapper.kt` (GPLv3), © Session Foundation, modified
+  (SessionLike/CallSupervisor composition; werift media plane; trickle-ICE
+  arming; diagnostics + error containment). Licensed under
   AGPL-3.0-or-later.
+
+src/media/peer-connection.ts
+  Peer-connection configuration (max-bundle, rtcp-mux, Opus preference,
+  Android-parity SDP munging, negotiated "signaling" data channel id 548)
+  ported from session-android `webrtc/PeerConnectionWrapper.kt` (GPLv3) and
+  session-desktop `ts/session/utils/calling/CallManager.ts` (AGPLv3),
+  © Session Foundation, modified (werift glue, ICE-state mapping and
+  teardown written fresh). Licensed under AGPL-3.0-or-later.
+
+src/media/audio-bridge.ts, src/media/codec.ts, src/media/sdp.ts,
+src/media/dsp.ts
+  PCM↔Opus bridge and SDP munging per plan §4.7; munging rules ported from
+  session-android `PeerConnectionWrapper.kt` (GPLv3) / session-desktop
+  (AGPLv3), © Session Foundation, modified; werift glue, codec abstraction
+  and DSP helpers written fresh. Licensed under AGPL-3.0-or-later.
 
 FRESH-WRITTEN FILES
 -------------------
@@ -35,15 +70,23 @@ src/errors.ts       — written fresh (P6-T3 error taxonomy). SPDX: AGPL-3.0-or-
 src/policy.ts       — written fresh (freshness windows from §3.1/§3.2 facts;
                       TURN constants are the public values shipped in every
                       official Session client, Appendix B). SPDX: AGPL-3.0-or-later.
+src/signaling.ts    — written fresh (SessionSignaling over SessionLike;
+                      TrickleIceSender batching per §3.2/§4.6; enum/literal
+                      type-bridge documentation). SPDX: AGPL-3.0-or-later.
 src/index.ts        — written fresh (barrel). SPDX: AGPL-3.0-or-later.
 test/**             — written fresh. SPDX: AGPL-3.0-or-later.
+examples/**         — written fresh (voice-agent + offline-echo demos,
+                      pluggable STT/TTS interfaces). SPDX: AGPL-3.0-or-later.
 
-Scaffolded for later phases (not yet implemented):
+NORMATIVE-TABLE RESTORATION
+---------------------------
 
-src/media/          — reserved for the media plane (werift PeerConnectionManager,
-                      AudioBridge, SDP munging; will port Android
-                      PeerConnectionWrapper.kt (GPLv3) and session-desktop
-                      CallManager.ts (AGPLv3), © Session Foundation, modified).
+src/fsm/state-machine.ts
+  Ported from session-android StateMachine.kt (GPLv3) as before; the P6-T1
+  work restored the normative Appendix C `network-reconnect` event (the
+  non-initiator's entry into `reconnecting`) that the P2 port had omitted —
+  plan data, not upstream code. © of the original port: Session Foundation.
+  Licensed under AGPL-3.0-or-later.
 
 OTHER FILES
 -----------

@@ -21,10 +21,33 @@
 //    the wire carries one END_CALL for decline, busy and hangup alike).
 //  - Graveyard: ended contexts are kept ~10 s (detached, timers unref'd) to
 //    absorb duplicate END_CALLs; then dropped. Documented optionality.
+//  - P6-T1 (reconnect completion): the deferred reconnect paths are filled
+//    in — initiator: restart-attempt loop (5 s × 5, OFFER with iceRestart,
+//    IceFailureError + END_CALL on exhaustion); non-initiator: the restored
+//    Appendix C `network-reconnect` FSM event enters `reconnecting` and a
+//    ≤60 s wait (NON_INITIATOR_RECONNECT_WAIT_MS, spec §3.2) ends the call
+//    with `ice-failed` if no restarted OFFER arrives. Timers are injectable
+//    (CallSupervisorDeps.timers) so the reconnect cadence is testable
+//    offline; the default is the global setTimeout/clearTimeout.
+//  - Early-media-connect deferral (P4-T3 wiring fix): werift can complete
+//    ICE BEFORE the signaling FSM is connectable (observed caller-side:
+//    media "connected" while still in local-pre-offer with the ANSWER in
+//    flight — and werift dedupes emissions, so the event is not repeated).
+//    Such events are remembered (CallContext.earlyMediaConnected) and
+//    applied once accept()/setRemoteAnswer/answer-restart brings the FSM to
+//    `connecting`. Without this, the call hangs in `connecting` until the
+//    60 s timeout despite a live media path.
+//  - P6-T3 (containment): signaling-send failures on a context's critical
+//    path now fail that call (error event + end reason "error") instead of
+//    only logging, and `failCall` is public so the CallManager layer can
+//    escalate media/consumer failures it observes. `CallContext.ignore()`
+//    attaches a catch so the void return can never leak an unhandled
+//    promise rejection.
 
 import {
 	CallError,
 	CallInProgressError,
+	IceFailureError,
 	InvalidCallMessageError,
 	InvalidCallTransitionError,
 	MediaFailureError,
@@ -39,6 +62,7 @@ import {
 	ICE_RESTART_INTERVAL_MS,
 	ICE_RESTART_MAX_ATTEMPTS,
 	isFresh,
+	NON_INITIATOR_RECONNECT_WAIT_MS,
 	shouldDropSelfMessage,
 } from "./policy.js";
 import { defaultIceServers } from "./policy.js";
@@ -59,7 +83,7 @@ import type {
 	SessionLike,
 	SignalingSender,
 } from "./types.js";
-import { CallMessageType } from "./types.js";
+import { callMessageTypeName, CallMessageType } from "./types.js";
 
 /** Assumed session.js default poll interval, restored after calls (§4.6). */
 export const ASSUMED_DEFAULT_POLL_INTERVAL_MS = 3000;
@@ -89,12 +113,21 @@ export class CallContext implements Call {
 	pendingOffer: string | undefined;
 	pendingRemoteCandidates: { candidate: string; sdpMLineIndex: number; sdpMid: string }[] = [];
 	everConnected = false;
+	/**
+	 * werift can complete ICE BEFORE the signaling FSM catches up (observed:
+	 * caller-side media "connected" while still in local-pre-offer, ANSWER in
+	 * flight; werift dedupes state emissions, so the event would be lost).
+	 * The supervisor defers ice-connected until the FSM is connectable.
+	 */
+	earlyMediaConnected = false;
 	endReason: EndReason | undefined;
 
 	/** Set by the supervisor when this context is active (for timer cleanup). */
 	callTimeoutTimer: unknown = undefined;
 	restartTimer: unknown = undefined;
 	restartAttempts = 0;
+	/** Non-initiator ≤60 s wait for the restarted OFFER (P6-T1, spec §3.2). */
+	reconnectWaitTimer: unknown = undefined;
 
 	/** Supervisor-level transition observer (wired by registerContext). */
 	onTransition: ((state: CallState) => void) | undefined;
@@ -107,11 +140,13 @@ export class CallContext implements Call {
 	};
 	#audioCbs: ((pcm: Int16Array) => void)[] = [];
 	#videoToggleCbs: ((enabled: boolean) => void)[] = [];
+	readonly #logger: CallLogger | undefined;
 
 	constructor(uuid: string, peer: string, direction: "inbound" | "outbound", startedAt: number, logger?: CallLogger) {
 		this.uuid = uuid;
 		this.peer = peer;
 		this.direction = direction;
+		this.#logger = logger;
 		this.fsm = new StateMachine("idle", logger);
 		this.info = { uuid, peer, direction, state: "idle", startedAt };
 	}
@@ -148,7 +183,14 @@ export class CallContext implements Call {
 		return this.#supervisorActions.reject(this.uuid);
 	}
 	ignore(): void {
-		void this.#supervisorActions.ignore(this.uuid);
+		// Containment (P6-T3): the void signature must never leak an unhandled
+		// rejection (e.g. ignore racing teardown). Log + swallow.
+		void this.#supervisorActions.ignore(this.uuid).catch((err: unknown) => {
+			this.#logger?.("debug", "ignore() failed (call already gone?)", {
+				uuid: this.uuid,
+				err: err instanceof Error ? err.message : String(err),
+			});
+		});
 	}
 	hangup(): Promise<void> {
 		return this.#supervisorActions.hangup(this.uuid);
@@ -199,6 +241,18 @@ interface SupervisorActions {
 // CallSupervisor
 // ---------------------------------------------------------------------------
 
+/**
+ * Injectable timer pair (P6-T1 testability: the ICE-restart cadence and the
+ * non-initiator reconnect wait are driven by fixed policy constants —
+ * ICE_RESTART_INTERVAL_MS / NON_INITIATOR_RECONNECT_WAIT_MS — so tests
+ * advance a fake scheduler instead of waiting real seconds). Default:
+ * global setTimeout/clearTimeout.
+ */
+export interface CallTimers {
+	setTimeout(cb: () => void, ms: number): unknown;
+	clearTimeout(handle: unknown): void;
+}
+
 export interface CallSupervisorDeps {
 	session: SessionLike;
 	signaling: SignalingSender;
@@ -209,6 +263,8 @@ export interface CallSupervisorDeps {
 	now?: () => number;
 	/** Injectable UUID factory (default crypto.randomUUID). */
 	createUuid?: () => string;
+	/** Injectable timers (default global setTimeout/clearTimeout). */
+	timers?: CallTimers;
 }
 
 export class CallSupervisor {
@@ -229,6 +285,7 @@ export class CallSupervisor {
 	readonly #log: CallLogger;
 	readonly #now: () => number;
 	readonly #createUuid: () => string;
+	readonly #timers: CallTimers;
 
 	readonly #contexts = new Map<string, CallContext>();
 	/** Ended contexts lingering to absorb duplicate END_CALLs. */
@@ -243,7 +300,9 @@ export class CallSupervisor {
 	#missedCbs = new Set<(record: MissedCallRecord) => void>();
 	#endedCbs = new Set<(ctx: CallContext, info: CallInfo) => void>();
 	#stateChangedCbs = new Set<(ctx: CallContext, state: CallState) => void>();
-	#errorCbs = new Set<(err: Error) => void>();
+	// ctx is passed when the error is attributable to a specific call (P6-T3
+	// error events at the CallManager layer carry the Call handle).
+	#errorCbs = new Set<(err: Error, ctx?: CallContext) => void>();
 
 	readonly #onCallEvent = (msg: CallMessageEvent): void => {
 		try {
@@ -272,7 +331,22 @@ export class CallSupervisor {
 		this.#log = deps.logger ?? (() => undefined);
 		this.#now = deps.now ?? (() => Date.now());
 		this.#createUuid = deps.createUuid ?? (() => crypto.randomUUID());
+		this.#timers =
+			deps.timers ??
+			({
+				setTimeout: (cb, ms) => setTimeout(cb, ms),
+				clearTimeout: (handle) => clearTimeout(handle as never),
+			} satisfies CallTimers);
 		this.#session.on("call", this.#onCallEvent);
+	}
+
+	// --- Timer plumbing (injectable — see CallTimers) -------------------------
+
+	#setTimeout(cb: () => void, ms: number): unknown {
+		return this.#timers.setTimeout(cb, ms);
+	}
+	#clearTimeout(handle: unknown): void {
+		this.#timers.clearTimeout(handle);
 	}
 
 	// --- Event registration ----------------------------------------------
@@ -292,7 +366,7 @@ export class CallSupervisor {
 	onStateChanged(cb: (ctx: CallContext, state: CallState) => void): void {
 		this.#stateChangedCbs.add(cb);
 	}
-	onError(cb: (err: Error) => void): void {
+	onError(cb: (err: Error, ctx?: CallContext) => void): void {
 		this.#errorCbs.add(cb);
 	}
 
@@ -355,7 +429,19 @@ export class CallSupervisor {
 			.catch((err) => this.#onSignalingError(ctx, err));
 		this.#trace(ctx, "out", CallMessageType.PRE_OFFER);
 
-		const ms = this.#createMediaSession(ctx, "caller");
+		let ms: MediaSession;
+		try {
+			ms = this.#createMediaSession(ctx, "caller");
+		} catch (err) {
+			// Synchronous media-engine failure (P6-T3 containment): fail the
+			// just-registered context (error event + end, reason "error") and
+			// rethrow so CallManager.call() rejects with the typed error.
+			this.#failCall(
+				ctx,
+				err instanceof Error ? err : new MediaFailureError(String(err), uuid),
+			);
+			throw err;
+		}
 		void ms
 			.createOffer()
 			.then((offer) =>
@@ -395,6 +481,7 @@ export class CallSupervisor {
 			// Self-sync copy so linked devices stop ringing (§4.5).
 			await this.#signaling.sendToSelf({ type: CallMessageType.ANSWER, uuid, sdps: [answer] });
 			this.#drainRemoteCandidates(ctx);
+			this.#maybeApplyEarlyConnected(ctx);
 		} catch (err) {
 			this.#failCall(ctx, err instanceof Error ? err : new MediaFailureError(String(err), uuid));
 		}
@@ -634,8 +721,25 @@ export class CallSupervisor {
 			return;
 		}
 		this.#trace(ctx, "in", msg.type);
-		if (ctx.state === "reconnecting" && ctx.direction === "inbound") {
+		if (
+			ctx.direction === "inbound" &&
+			(ctx.state === "reconnecting" || ctx.state === "pending-reconnect")
+		) {
 			// Mid-call ICE restart offer from the initiator (guard: non-initiator).
+			// Defensively: if the restart wait hasn't transitioned us yet
+			// (pending-reconnect), enter `reconnecting` first.
+			if (ctx.state === "pending-reconnect") {
+				try {
+					ctx.apply("network-reconnect", { isInitiator: false });
+					this.#clearReconnectWaitTimer(ctx);
+				} catch (err) {
+					this.#log("debug", "network-reconnect rejected on restart offer", {
+						uuid: msg.uuid,
+						err,
+					});
+					return;
+				}
+			}
 			try {
 				ctx.apply("receive-offer-restart", { isInitiator: false });
 			} catch (err) {
@@ -723,6 +827,7 @@ export class CallSupervisor {
 			.setRemoteAnswer(answer)
 			.then(() => {
 				this.#drainRemoteCandidates(ctx);
+				this.#maybeApplyEarlyConnected(ctx);
 			})
 			.catch((err) => {
 				this.#failCall(
@@ -805,15 +910,26 @@ export class CallSupervisor {
 		try {
 			switch (s) {
 				case "connected": {
-					ctx.apply("ice-connected");
-					ctx.everConnected = true;
-					ctx.info.connectedAt = this.#now();
-					this.#cancelCallTimeout(ctx);
-					ctx.restartAttempts = 0;
-					this.#clearRestartTimer(ctx);
+					if (ctx.state === "connecting" || ctx.state === "reconnecting") {
+						this.#markConnected(ctx);
+					} else if (ctx.state === "connected") {
+						// Duplicate — ignore.
+					} else {
+						// Media completed before the FSM is connectable
+						// (caller-side ANSWER still in flight — werift can win
+						// that race; it will not re-emit). Defer; the deferred
+						// mark fires from accept()/#onAnswer/#answerRestart
+						// once the FSM reaches `connecting`.
+						ctx.earlyMediaConnected = true;
+						this.#log("debug", "media connected before FSM connectable — deferring", {
+							uuid: ctx.uuid,
+							state: ctx.state,
+						});
+					}
 					break;
 				}
 				case "disconnected": {
+					ctx.earlyMediaConnected = false; // a flap invalidates it
 					if (ctx.state === "connected") {
 						ctx.apply("ice-disconnected");
 						this.#scheduleRestartIfInitiator(ctx);
@@ -836,57 +952,157 @@ export class CallSupervisor {
 		}
 	}
 
-	/** Initiator-only ICE restart loop (Android: every 5 s, ≤5 attempts). */
+	/** FSM ice-connected + the mark-connected effect bundle. */
+	#markConnected(ctx: CallContext): void {
+		ctx.earlyMediaConnected = false;
+		ctx.apply("ice-connected");
+		ctx.everConnected = true;
+		ctx.info.connectedAt = this.#now();
+		this.#cancelCallTimeout(ctx);
+		ctx.restartAttempts = 0;
+		this.#clearRestartTimer(ctx);
+		this.#clearReconnectWaitTimer(ctx);
+	}
+
+	/**
+	 * Apply a deferred early media-"connected" once the FSM has become
+	 * connectable (called after accept(), setRemoteAnswer, answer-restart).
+	 */
+	#maybeApplyEarlyConnected(ctx: CallContext): void {
+		if (
+			ctx.earlyMediaConnected &&
+			(ctx.state === "connecting" || ctx.state === "reconnecting")
+		) {
+			this.#markConnected(ctx);
+		}
+	}
+
+	/**
+	 * Mid-call ICE disconnect handling (P6-T1, spec §3.2):
+	 * - initiator (outbound): every ICE_RESTART_INTERVAL_MS (5 s), up to
+	 *   ICE_RESTART_MAX_ATTEMPTS (5) restart OFFERs (`iceRestart: true`, same
+	 *   uuid, new SDP). FSM: restart-attempt → reconnecting (first attempt;
+	 *   later attempts stay in `reconnecting` and just resend). A restart
+	 *   ANSWER takes the FSM reconnecting → connecting and `ice-connected`
+	 *   restores `connected` (restartAttempts/reset timer cleared there).
+	 *   Exhaustion → IceFailureError, END_CALL peer+self, endReason
+	 *   `ice-failed` (Android WebRtcCallBridge behavior).
+	 * - non-initiator (inbound): FSM `network-reconnect` (restored Appendix C
+	 *   row) → reconnecting, then wait ≤ NON_INITIATOR_RECONNECT_WAIT_MS
+	 *   (60 s, spec §3.2) for the restarted OFFER — answered via
+	 *   receive-offer-restart in #onOffer. Elapsed → END_CALL, `ice-failed`.
+	 */
 	#scheduleRestartIfInitiator(ctx: CallContext): void {
 		if (ctx.direction !== "outbound") {
-			// Non-initiator waits ≤60 s for the restarted offer (P6-T1 full impl).
-			this.#log("debug", "non-initiator awaiting ICE restart offer", { uuid: ctx.uuid });
+			this.#beginNonInitiatorReconnectWait(ctx);
 			return;
 		}
 		const attempt = (): void => {
-			if (ctx.state !== "pending-reconnect") {
+			ctx.restartTimer = undefined;
+			// Recovered (connecting/connected) or torn down → stop the chain.
+			if (ctx.state !== "pending-reconnect" && ctx.state !== "reconnecting") {
 				return;
 			}
 			if (ctx.restartAttempts >= ICE_RESTART_MAX_ATTEMPTS) {
 				this.#log("warn", "ICE restart attempts exhausted", { uuid: ctx.uuid });
+				const err = new IceFailureError(
+					`ICE restart failed after ${ICE_RESTART_MAX_ATTEMPTS} attempts`,
+					ctx.uuid,
+				);
+				this.#emitError(err, ctx);
 				try {
 					ctx.apply("user-hangup");
-				} catch (err) {
-					this.#log("debug", "hangup after ICE exhaustion rejected", { err });
+				} catch (err2) {
+					this.#log("debug", "hangup after ICE exhaustion rejected", { err: err2 });
 				}
 				void this.#sendEndCall(ctx).catch(() => undefined);
 				this.#endCall(ctx, "ice-failed");
 				return;
 			}
+			if (ctx.state === "pending-reconnect") {
+				// First attempt: FSM pending-reconnect → reconnecting.
+				try {
+					ctx.apply("restart-attempt", { isInitiator: true });
+				} catch (err) {
+					this.#log("debug", "restart-attempt rejected", { uuid: ctx.uuid, err });
+					return;
+				}
+			}
 			ctx.restartAttempts += 1;
-			try {
-				ctx.apply("restart-attempt", { isInitiator: true });
-			} catch (err) {
-				this.#log("debug", "restart-attempt rejected", { uuid: ctx.uuid, err });
-				return;
-			}
+			this.#log("info", "ICE restart attempt", {
+				uuid: ctx.uuid,
+				attempt: ctx.restartAttempts,
+				max: ICE_RESTART_MAX_ATTEMPTS,
+			});
 			const ms = ctx.mediaSession;
-			if (!ms) {
-				return;
+			if (ms) {
+				void ms
+					.createOffer({ iceRestart: true })
+					.then((offer) =>
+						this.#signaling.sendToPeer(ctx.peer, {
+							type: CallMessageType.OFFER,
+							uuid: ctx.uuid,
+							sdps: [offer],
+						}),
+					)
+					.then(() => {
+						this.#trace(ctx, "out", CallMessageType.OFFER);
+					})
+					.catch((err) => this.#onSignalingError(ctx, err));
 			}
-			void ms
-				.createOffer({ iceRestart: true })
-				.then((offer) =>
-					this.#signaling.sendToPeer(ctx.peer, {
-						type: CallMessageType.OFFER,
-						uuid: ctx.uuid,
-						sdps: [offer],
-					}),
-				)
-				.catch((err) => this.#onSignalingError(ctx, err));
-			ctx.restartTimer = setTimeout(attempt, ICE_RESTART_INTERVAL_MS);
+			ctx.restartTimer = this.#setTimeout(attempt, ICE_RESTART_INTERVAL_MS);
 			unrefTimer(ctx.restartTimer);
 		};
-		ctx.restartTimer = setTimeout(attempt, ICE_RESTART_INTERVAL_MS);
+		ctx.restartTimer = this.#setTimeout(attempt, ICE_RESTART_INTERVAL_MS);
 		unrefTimer(ctx.restartTimer);
 	}
 
+	/** Non-initiator: enter `reconnecting`, await the restarted OFFER ≤60 s. */
+	#beginNonInitiatorReconnectWait(ctx: CallContext): void {
+		try {
+			ctx.apply("network-reconnect", { isInitiator: false });
+		} catch (err) {
+			this.#log("debug", "network-reconnect rejected", { uuid: ctx.uuid, err });
+			return;
+		}
+		this.#log("info", "non-initiator awaiting ICE restart offer", {
+			uuid: ctx.uuid,
+			waitMs: NON_INITIATOR_RECONNECT_WAIT_MS,
+		});
+		ctx.reconnectWaitTimer = this.#setTimeout(() => {
+			ctx.reconnectWaitTimer = undefined;
+			this.#onReconnectWaitExpired(ctx);
+		}, NON_INITIATOR_RECONNECT_WAIT_MS);
+		unrefTimer(ctx.reconnectWaitTimer);
+	}
+
+	#onReconnectWaitExpired(ctx: CallContext): void {
+		if (!this.#contexts.has(ctx.uuid)) {
+			return;
+		}
+		if (ctx.state !== "reconnecting" && ctx.state !== "pending-reconnect") {
+			// Reconnected or ended meanwhile.
+			return;
+		}
+		this.#log("warn", "ICE restart wait expired (non-initiator, spec §3.2 ≤60 s)", {
+			uuid: ctx.uuid,
+		});
+		const err = new IceFailureError(
+			`No ICE restart offer within ${NON_INITIATOR_RECONNECT_WAIT_MS}ms`,
+			ctx.uuid,
+		);
+		this.#emitError(err, ctx);
+		try {
+			ctx.apply("timeout");
+		} catch (err2) {
+			this.#log("debug", "reconnect-wait timeout transition rejected", { uuid: ctx.uuid, err: err2 });
+		}
+		void this.#sendEndCall(ctx).catch(() => undefined);
+		this.#endCall(ctx, "ice-failed");
+	}
+
 	#answerRestart(ctx: CallContext, offer: string): void {
+		this.#clearReconnectWaitTimer(ctx);
 		const ms = ctx.mediaSession;
 		if (!ms) {
 			this.#failCall(ctx, new MediaFailureError("restart OFFER without media session", ctx.uuid));
@@ -907,6 +1123,7 @@ export class CallSupervisor {
 					sdps: [answer],
 				});
 				this.#drainRemoteCandidates(ctx);
+				this.#maybeApplyEarlyConnected(ctx);
 			} catch (err) {
 				this.#failCall(
 					ctx,
@@ -933,7 +1150,7 @@ export class CallSupervisor {
 	// --- Timers ----------------------------------------------------------------
 
 	#startCallTimeout(ctx: CallContext): void {
-		ctx.callTimeoutTimer = setTimeout(() => {
+		ctx.callTimeoutTimer = this.#setTimeout(() => {
 			ctx.callTimeoutTimer = undefined;
 			this.#onCallTimeout(ctx);
 		}, this.#options.callTimeoutMs);
@@ -942,7 +1159,7 @@ export class CallSupervisor {
 
 	#cancelCallTimeout(ctx: CallContext): void {
 		if (ctx.callTimeoutTimer !== undefined) {
-			clearTimeout(ctx.callTimeoutTimer as never);
+			this.#clearTimeout(ctx.callTimeoutTimer);
 			ctx.callTimeoutTimer = undefined;
 		}
 	}
@@ -973,8 +1190,15 @@ export class CallSupervisor {
 
 	#clearRestartTimer(ctx: CallContext): void {
 		if (ctx.restartTimer !== undefined) {
-			clearTimeout(ctx.restartTimer as never);
+			this.#clearTimeout(ctx.restartTimer);
 			ctx.restartTimer = undefined;
+		}
+	}
+
+	#clearReconnectWaitTimer(ctx: CallContext): void {
+		if (ctx.reconnectWaitTimer !== undefined) {
+			this.#clearTimeout(ctx.reconnectWaitTimer);
+			ctx.reconnectWaitTimer = undefined;
 		}
 	}
 
@@ -998,8 +1222,16 @@ export class CallSupervisor {
 	}
 
 	#failCall(ctx: CallContext, err: Error, reason: EndReason = "error"): void {
-		this.#log("error", "call failed", { uuid: ctx.uuid, err });
-		this.#emitError(err);
+		this.#log("error", "call failed", {
+			uuid: ctx.uuid,
+			err: err instanceof Error ? err.message : String(err),
+		});
+		this.#emitError(err, ctx);
+		if (!this.#contexts.has(ctx.uuid)) {
+			// Already torn down (e.g. a late async signaling rejection raced
+			// teardown): surface the error but never end twice.
+			return;
+		}
 		if (ctx.state !== "idle" && ctx.state !== "disconnected") {
 			try {
 				ctx.apply("receive-end-call");
@@ -1008,6 +1240,22 @@ export class CallSupervisor {
 			}
 		}
 		this.#endCall(ctx, reason);
+	}
+
+	/**
+	 * Escalate an externally-observed failure for a call (media engine throw,
+	 * consumer pipeline error surfaced by the CallManager layer — P6-T3).
+	 * Emits the error on the error channel (with call attribution) and ends
+	 * the call with `reason` (default "error"). Safe if the call is already
+	 * gone (the error is still emitted).
+	 */
+	failCall(uuid: string, err: Error, reason: EndReason = "error"): void {
+		const ctx = this.#contexts.get(uuid);
+		if (!ctx) {
+			this.#emitError(err);
+			return;
+		}
+		this.#failCall(ctx, err, reason);
 	}
 
 	#teardownContext(ctx: CallContext): void {
@@ -1020,8 +1268,9 @@ export class CallSupervisor {
 		}
 		ctx.mediaSession = undefined;
 		this.#contexts.delete(ctx.uuid);
+		this.#clearReconnectWaitTimer(ctx);
 		this.#graveyard.set(ctx.uuid, { peer: ctx.peer, endReason: ctx.info.endReason });
-		const g = setTimeout(() => {
+		const g = this.#setTimeout(() => {
 			this.#graveyard.delete(ctx.uuid);
 		}, GRAVEYARD_MS);
 		unrefTimer(g);
@@ -1064,11 +1313,28 @@ export class CallSupervisor {
 
 	#trace(ctx: CallContext, direction: "in" | "out", type: CallMessageTypeValue): void {
 		ctx.emit("signaling", { direction, type, uuid: ctx.uuid });
+		// Diagnostics (P5-T3): every signaling receive (and the FSM-level send
+		// trace) is logged — direction/type/uuid ONLY, never SDP payloads.
+		if (direction === "in") {
+			this.#log("debug", `signaling recv type=${callMessageTypeName(type)} uuid=${ctx.uuid}`);
+		} else {
+			this.#log("debug", `signaling send (fsm) type=${callMessageTypeName(type)} uuid=${ctx.uuid}`);
+		}
 	}
 
 	#onSignalingError(ctx: CallContext, err: unknown): void {
-		this.#log("warn", "signaling send failed", { uuid: ctx.uuid, err });
-		this.#emitError(err instanceof Error ? err : new Error(String(err)));
+		// A failure on the context's CRITICAL signaling path (PRE_OFFER/OFFER
+		// send, ICE-restart OFFER send) means the call cannot succeed — end it
+		// with an error instead of letting it limp into the timeout (P6-T3
+		// containment; the error event carries call attribution).
+		this.#log("warn", "signaling send failed", {
+			uuid: ctx.uuid,
+			err: err instanceof Error ? err.message : String(err),
+		});
+		this.#failCall(
+			ctx,
+			err instanceof Error ? err : new CallError("SIGNALING_FAILURE", String(err), ctx.uuid),
+		);
 	}
 
 	#recordMissed(peer: string, reason: MissedCallRecord["reason"]): void {
@@ -1077,9 +1343,9 @@ export class CallSupervisor {
 		for (const cb of this.#missedCbs) cb(record);
 	}
 
-	#emitError(err: Error): void {
-		this.#log("error", "call error", { err: err.message });
-		for (const cb of this.#errorCbs) cb(err);
+	#emitError(err: Error, ctx?: CallContext): void {
+		this.#log("error", "call error", { err: err.message, uuid: ctx?.uuid });
+		for (const cb of this.#errorCbs) cb(err, ctx);
 	}
 
 	#boostPoll(): void {
