@@ -29,6 +29,14 @@
 //    with `ice-failed` if no restarted OFFER arrives. Timers are injectable
 //    (CallSupervisorDeps.timers) so the reconnect cadence is testable
 //    offline; the default is the global setTimeout/clearTimeout.
+//  - Early-media-connect deferral (P4-T3 wiring fix): werift can complete
+//    ICE BEFORE the signaling FSM is connectable (observed caller-side:
+//    media "connected" while still in local-pre-offer with the ANSWER in
+//    flight — and werift dedupes emissions, so the event is not repeated).
+//    Such events are remembered (CallContext.earlyMediaConnected) and
+//    applied once accept()/setRemoteAnswer/answer-restart brings the FSM to
+//    `connecting`. Without this, the call hangs in `connecting` until the
+//    60 s timeout despite a live media path.
 //  - P6-T3 (containment): signaling-send failures on a context's critical
 //    path now fail that call (error event + end reason "error") instead of
 //    only logging, and `failCall` is public so the CallManager layer can
@@ -105,6 +113,13 @@ export class CallContext implements Call {
 	pendingOffer: string | undefined;
 	pendingRemoteCandidates: { candidate: string; sdpMLineIndex: number; sdpMid: string }[] = [];
 	everConnected = false;
+	/**
+	 * werift can complete ICE BEFORE the signaling FSM catches up (observed:
+	 * caller-side media "connected" while still in local-pre-offer, ANSWER in
+	 * flight; werift dedupes state emissions, so the event would be lost).
+	 * The supervisor defers ice-connected until the FSM is connectable.
+	 */
+	earlyMediaConnected = false;
 	endReason: EndReason | undefined;
 
 	/** Set by the supervisor when this context is active (for timer cleanup). */
@@ -466,6 +481,7 @@ export class CallSupervisor {
 			// Self-sync copy so linked devices stop ringing (§4.5).
 			await this.#signaling.sendToSelf({ type: CallMessageType.ANSWER, uuid, sdps: [answer] });
 			this.#drainRemoteCandidates(ctx);
+			this.#maybeApplyEarlyConnected(ctx);
 		} catch (err) {
 			this.#failCall(ctx, err instanceof Error ? err : new MediaFailureError(String(err), uuid));
 		}
@@ -811,6 +827,7 @@ export class CallSupervisor {
 			.setRemoteAnswer(answer)
 			.then(() => {
 				this.#drainRemoteCandidates(ctx);
+				this.#maybeApplyEarlyConnected(ctx);
 			})
 			.catch((err) => {
 				this.#failCall(
@@ -893,16 +910,26 @@ export class CallSupervisor {
 		try {
 			switch (s) {
 				case "connected": {
-					ctx.apply("ice-connected");
-					ctx.everConnected = true;
-					ctx.info.connectedAt = this.#now();
-					this.#cancelCallTimeout(ctx);
-					ctx.restartAttempts = 0;
-					this.#clearRestartTimer(ctx);
-					this.#clearReconnectWaitTimer(ctx);
+					if (ctx.state === "connecting" || ctx.state === "reconnecting") {
+						this.#markConnected(ctx);
+					} else if (ctx.state === "connected") {
+						// Duplicate — ignore.
+					} else {
+						// Media completed before the FSM is connectable
+						// (caller-side ANSWER still in flight — werift can win
+						// that race; it will not re-emit). Defer; the deferred
+						// mark fires from accept()/#onAnswer/#answerRestart
+						// once the FSM reaches `connecting`.
+						ctx.earlyMediaConnected = true;
+						this.#log("debug", "media connected before FSM connectable — deferring", {
+							uuid: ctx.uuid,
+							state: ctx.state,
+						});
+					}
 					break;
 				}
 				case "disconnected": {
+					ctx.earlyMediaConnected = false; // a flap invalidates it
 					if (ctx.state === "connected") {
 						ctx.apply("ice-disconnected");
 						this.#scheduleRestartIfInitiator(ctx);
@@ -922,6 +949,31 @@ export class CallSupervisor {
 				s,
 				err,
 			});
+		}
+	}
+
+	/** FSM ice-connected + the mark-connected effect bundle. */
+	#markConnected(ctx: CallContext): void {
+		ctx.earlyMediaConnected = false;
+		ctx.apply("ice-connected");
+		ctx.everConnected = true;
+		ctx.info.connectedAt = this.#now();
+		this.#cancelCallTimeout(ctx);
+		ctx.restartAttempts = 0;
+		this.#clearRestartTimer(ctx);
+		this.#clearReconnectWaitTimer(ctx);
+	}
+
+	/**
+	 * Apply a deferred early media-"connected" once the FSM has become
+	 * connectable (called after accept(), setRemoteAnswer, answer-restart).
+	 */
+	#maybeApplyEarlyConnected(ctx: CallContext): void {
+		if (
+			ctx.earlyMediaConnected &&
+			(ctx.state === "connecting" || ctx.state === "reconnecting")
+		) {
+			this.#markConnected(ctx);
 		}
 	}
 
@@ -1071,6 +1123,7 @@ export class CallSupervisor {
 					sdps: [answer],
 				});
 				this.#drainRemoteCandidates(ctx);
+				this.#maybeApplyEarlyConnected(ctx);
 			} catch (err) {
 				this.#failCall(
 					ctx,
