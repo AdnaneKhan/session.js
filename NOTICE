@@ -1,0 +1,45 @@
+NOTICE — session.js client fork with voice-call support
+========================================================
+
+Original @session.js/client code
+--------------------------------
+The original code of this repository (@session.js/client,
+upstream https://git.hloth.dev/session.js/client) is licensed under the
+MIT License. See LICENSE. Original portions remain MIT.
+
+Voice-call additions (this fork)
+--------------------------------
+This fork adds Session-to-Session voice-call support. The added calls/
+package (introduced on the feat/voice-calls* branches) is licensed
+AGPL-3.0-or-later and contains code ported from Session Foundation's
+official clients, with attribution and preserved copyright headers:
+
+  - session-android (GPLv3)  — state machine, signaling processor, peer
+    connection config, wire message model
+  - session-desktop (AGPLv3) — TypeScript call engine, outgoing/incoming
+    call message handling
+
+Per-file porting provenance is recorded in calls/COPYING.provenance.
+
+The combined work (forked client plus calls/ package) is distributed under
+the terms of the GNU Affero General Public License version 3 (AGPLv3);
+GPLv3 Android code combines into an AGPLv3 work per AGPLv3 §13.
+
+Fresh-written core-client patches
+---------------------------------
+The following patches to the core client are written fresh from the
+published SessionProtos.proto field facts (no lines copied from GPL/AGPL
+sources) and remain MIT-licensable for contribution upstream to MIT
+session.js: the mapCallMessage mapper fix, the CallMessage schema class,
+Session.prototype.sendCallMessage, setPollInterval, and NetworkNode.
+
+AGPL §13 — network-use obligation
+---------------------------------
+Anyone running this code (original + voice-call additions) as a network
+service must make the Corresponding Source of the running version
+available to users of that service, under the terms of the AGPLv3.
+To satisfy this: these repositories are kept public, and releases are
+tagged and archived. Service operators embedding this library inherit the
+same obligation.
+
+See also: docs/protocol-notes.md, docs/upstream-pin.md, docs/evidence/.
