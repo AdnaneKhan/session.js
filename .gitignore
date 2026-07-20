@@ -174,4 +174,10 @@ dist
 # Finder (MacOS) folder config
 .DS_Store
 
-examples
+# Root-level examples sandbox only — anchored so calls/examples/ (shipped
+# with the @session.js/calls package) tracks normally.
+/examples
+
+# E2E run reports (generated; a sanitized sample is committed under
+# calls/e2e/reports-sample/).
+calls/e2e/reports/

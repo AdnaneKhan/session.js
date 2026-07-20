@@ -1,0 +1,272 @@
+{
+  "runId": "2026-07-20T18-19-41-818Z-tier1",
+  "generatedAt": "2026-07-20T18:19:41.818Z",
+  "tier": "tier1",
+  "networked": false,
+  "runtime": {
+    "name": "bun",
+    "version": "1.3.14",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "repo": {
+    "branch": "feat/voice-calls-e2e",
+    "head": "79e3460"
+  },
+  "durationMs": 18177,
+  "totals": {
+    "pass": 10,
+    "fail": 0,
+    "skip": 0,
+    "checks": 99
+  },
+  "results": [
+    {
+      "name": "lifecycle-full",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 17,
+      "checkFailures": [],
+      "timings": {
+        "ringMs": 21,
+        "connectMs": 808,
+        "audioFirstFrameMs": 960,
+        "totalMs": 5747
+      },
+      "detail": {
+        "sentFrames": {
+          "a": 150,
+          "b": 150
+        },
+        "receivedFrames": {
+          "calleeB": 150,
+          "callerA": 150
+        },
+        "toneSnrDb": {
+          "calleeB440": 198,
+          "callerA880": 198.1
+        },
+        "wireCounts": {
+          "fromA": {
+            "PRE_OFFER": 1,
+            "OFFER": 1,
+            "ICE": 1,
+            "END": 1
+          },
+          "fromASelf": {
+            "END": 1
+          },
+          "fromB": {
+            "ANSWER": 1,
+            "ICE": 1
+          },
+          "fromBSelf": {
+            "ANSWER": 1
+          }
+        },
+        "pollIntervals": {
+          "a": [
+            500,
+            3000
+          ],
+          "b": [
+            500,
+            3000
+          ]
+        },
+        "iceMessages": 2
+      },
+      "durationMs": 5747
+    },
+    {
+      "name": "decline",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 10,
+      "checkFailures": [],
+      "timings": {
+        "ringMs": 1,
+        "totalMs": 261
+      },
+      "detail": {
+        "wireFromA": [
+          6,
+          1
+        ],
+        "wireFromB": [
+          5,
+          5
+        ]
+      },
+      "durationMs": 261
+    },
+    {
+      "name": "ignore",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 8,
+      "checkFailures": [],
+      "timings": {
+        "ringMs": 1,
+        "totalMs": 3022
+      },
+      "detail": {
+        "wireFromA": [
+          6,
+          1,
+          4,
+          5,
+          5
+        ],
+        "wireFromB": [],
+        "missedB": [
+          "ignored"
+        ]
+      },
+      "durationMs": 3023
+    },
+    {
+      "name": "busy",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 9,
+      "checkFailures": [],
+      "timings": {
+        "ringMs": 6,
+        "connectMs": 630,
+        "totalMs": 684
+      },
+      "detail": {
+        "missedB": [
+          {
+            "peer": "05e3e3e3",
+            "reason": "busy"
+          }
+        ],
+        "intruderEndReason": "remote-declined"
+      },
+      "durationMs": 685
+    },
+    {
+      "name": "timeout",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 4,
+      "checkFailures": [],
+      "timings": {
+        "ringMs": 2,
+        "connectMs": 3012,
+        "totalMs": 3012
+      },
+      "detail": {
+        "variant": "fast-3s",
+        "callTimeoutMs": 3000
+      },
+      "durationMs": 3012
+    },
+    {
+      "name": "reconnect-recover",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 14,
+      "checkFailures": [],
+      "timings": {
+        "totalMs": 10
+      },
+      "detail": {
+        "restartOffers": 2,
+        "offersSent": 3
+      },
+      "durationMs": 10
+    },
+    {
+      "name": "reconnect-exhaust",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 12,
+      "checkFailures": [],
+      "timings": {
+        "totalMs": 15
+      },
+      "detail": {
+        "restartOffers": 5,
+        "endReason": "ice-failed"
+      },
+      "durationMs": 15
+    },
+    {
+      "name": "multi-device",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 9,
+      "checkFailures": [],
+      "timings": {
+        "ringMs": 1,
+        "connectMs": 527,
+        "totalMs": 2678
+      },
+      "detail": {
+        "device2EndReason": "answered-elsewhere",
+        "device1ReceivedFrames": 50,
+        "device2Sends": 0
+      },
+      "durationMs": 2679
+    },
+    {
+      "name": "wire-golden",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 2,
+      "checkFailures": [],
+      "timings": {
+        "totalMs": 48
+      },
+      "detail": {
+        "verifyOutput": [
+          "OK  pre-offer.hex  type=PRE_OFFER  sha256=c8d7d16c5e0b46714dc4d253ddeeb5183f5a1ffa17c0b1846a720bbc85b188eb",
+          "OK  offer.hex  type=OFFER  sha256=5e9f7a6c3efc8c4ab79a920ffef522ff6d834b405ae48e8f03e1080359e834cc",
+          "OK  answer.hex  type=ANSWER  sha256=14b780984c08831c359add14fb79424c507443c18dc85aaaf8c258af16e09987",
+          "OK  ice-candidates.hex  type=ICE_CANDIDATES  sha256=ea15d5903c334b77cbbbee82ec26c642cc51a3e515e8b07a24a25659c1e513b1",
+          "OK  end-call.hex  type=END_CALL  sha256=ef943c835fb39d3b1925f876dc9461d9a0145c6e964e08ae1e15ea910369bc37",
+          "all 5 fixtures verified"
+        ]
+      },
+      "durationMs": 48
+    },
+    {
+      "name": "redaction",
+      "mode": "offline",
+      "tier": "tier1",
+      "pass": true,
+      "skipped": false,
+      "checks": 14,
+      "checkFailures": [],
+      "timings": {
+        "totalMs": 2657
+      },
+      "detail": {
+        "logLines": 36,
+        "logChars": 4332
+      },
+      "durationMs": 2658
+    }
+  ]
+}
