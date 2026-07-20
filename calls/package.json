@@ -6,9 +6,25 @@
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
-	"exports": { ".": "./dist/index.js" },
-	"engines": { "node": ">=22" },
-	"scripts": { "build": "tsc -p tsconfig.json", "test": "bun test" },
-	"dependencies": { "werift": "0.23.0" },
-	"peerDependencies": { "@session.js/client": ">=0.0.57" }
+	"exports": {
+		".": "./dist/index.js"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"test": "bun test",
+		"spike": "bun spike/werift-loopback.ts",
+		"spike:turn": "bun spike/turn-connectivity.ts"
+	},
+	"dependencies": {
+		"werift": "0.23.0"
+	},
+	"optionalDependencies": {
+		"@discordjs/opus": "0.10.0"
+	},
+	"peerDependencies": {
+		"@session.js/client": ">=0.0.57"
+	}
 }
