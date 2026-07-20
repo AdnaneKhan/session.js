@@ -1,0 +1,86 @@
+# CI for the session.js client fork + @session.js/calls (plan G7 / P0-T1).
+#
+# This repo lives on Gitea (git.hloth.dev) — Gitea Actions reads
+# .github/workflows with GitHub-Actions-compatible syntax.
+#
+# Offline lanes only. Networked E2E tiers (fresh/secret accounts, UDP
+# egress, TURN) run in nightly.yml. Known networked exclusion:
+# test/sending-and-polling.test.ts requires a live swarm + configured test
+# account — it is filtered out of the client lane (documented).
+#
+# Note: networked integration tests in calls/ are gated behind
+# SESSION_CALLS_NETWORK_TESTS=1 (not set here); the relay-only media test
+# soft-skips on environmental degradation and never fails the suite.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both lanes run the bun:test suite (the repo's test framework);
+        # the matrix additionally proves the built client imports under
+        # each runtime (Node 22 primary / Bun secondary — plan D1).
+        runtime: [bun-latest, node-22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install
+        run: bun install
+      - name: build
+        run: bun run build
+      - name: client tests (offline lane)
+        run: bun test $(ls test/*.test.ts | grep -v sending-and-polling | tr '\n' ' ')
+      - name: runtime import check (bun)
+        if: matrix.runtime == 'bun-latest'
+        run: bun -e "const m = await import('./dist/index.js'); if (typeof m.Session !== 'function') throw new Error('no Session export'); console.log('bun import OK');"
+      - name: runtime import check (node 22)
+        if: matrix.runtime == 'node-22'
+        run: node -e "import('./dist/index.js').then(m => { if (typeof m.Session !== 'function') throw new Error('no Session export'); console.log('node import OK'); })"
+
+  calls:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [bun-latest, node-22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install (root deps for scripts/verify-fixtures.ts)
+        run: bun install
+      - name: install (calls)
+        run: cd calls && bun install
+      - name: build (calls)
+        run: cd calls && bun run build
+      - name: calls tests (offline tier incl. relay soft-skip)
+        timeout-minutes: 10
+        run: cd calls && bun test
+      - name: offline full-stack echo example
+        # Hard cap: werift TURN attempts can stall on hostile UDP egress
+        # (observed once under concurrent network-test contention).
+        timeout-minutes: 5
+        run: cd calls && bun run example:echo
+      - name: Tier-1 E2E suite (offline)
+        timeout-minutes: 10
+        run: cd calls && bun e2e/run-tier1.ts
+      - name: node-22 media spike (native TS stripping, plan D1)
+        if: matrix.runtime == 'node-22'
+        timeout-minutes: 5
+        run: cd calls && node --experimental-strip-types spike/werift-loopback.ts

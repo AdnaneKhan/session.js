@@ -1,0 +1,58 @@
+# Nightly E2E tiers (plan P7-T2/P7-T3): real 60 s ring timeouts, the Tier-2
+# fault/stress suite, and the networked lifecycle over the live swarm.
+#
+# The networked lane uses FRESHLY GENERATED throwaway accounts by default
+# (the harness generates its own mnemonics — nothing is committed). If
+# TEST_ACCOUNT_A/B secrets are configured they are passed through for
+# future fixed-account mode. The network lane is continue-on-error:
+# swarm/TURN availability is environmental; the offline tiers are the
+# release gate (plan: 3× consecutive nightly greens).
+
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # off-minute, daily
+  workflow_dispatch:
+
+jobs:
+  e2e-nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install
+        run: bun install && cd calls && bun install
+      - name: build (calls)
+        run: cd calls && bun run build
+
+      - name: Tier-1 with REAL 60 s ring timeouts
+        run: cd calls && bun e2e/run-tier1.ts --real-timeouts
+
+      - name: Tier-2 fault & stress
+        run: cd calls && bun e2e/run-tier2.ts
+
+      - name: Networked lifecycle (live swarm; secrets optional)
+        continue-on-error: true
+        env:
+          SESSION_CALLS_NETWORK_TESTS: "1"
+          TEST_ACCOUNT_A: ${{ secrets.TEST_ACCOUNT_A }}
+          TEST_ACCOUNT_B: ${{ secrets.TEST_ACCOUNT_B }}
+        run: |
+          if [ -n "$TEST_ACCOUNT_A" ] && [ -n "$TEST_ACCOUNT_B" ]; then
+            echo "TEST_ACCOUNT_A/B secrets present (fixed-account mode reserved)"
+          else
+            echo "no TEST_ACCOUNT_A/B secrets — harness generates fresh throwaway accounts"
+          fi
+          cd calls && bun e2e/run-tier1.ts --only lifecycle-networked --runs 3
+
+      - name: Networked Tier-2 poll latency (live swarm)
+        continue-on-error: true
+        env:
+          SESSION_CALLS_NETWORK_TESTS: "1"
+        run: cd calls && bun e2e/run-tier2.ts --only poll-latency-networked
