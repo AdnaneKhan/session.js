@@ -18,6 +18,12 @@
 //    connecting, connected]). The effect is identical (unchanged + record
 //    missed + END_CALL for the other uuid); the wider validity only makes
 //    the busy arbiter total during reconnect states. Documented deviation.
+//  - P6-T1: the normative `network-reconnect` event (Appendix C) was missing
+//    from the P2 port — restored. It is the NON-INITIATOR's entry into
+//    `reconnecting` (await the restarted offer ≤60 s); the initiator enters
+//    `reconnecting` via `restart-attempt` instead, so the restored row
+//    carries a `non-initiator` guard. Table counts are now 20 events /
+//    22 rows (test/fsm/matrix.test.ts updated accordingly).
 //  - Side-effect *interpretation* lives in the supervisor (src/supervisor.ts);
 //    this module only emits effect names.
 
@@ -38,7 +44,7 @@ export const CALL_STATES = [
 	"disconnected",
 ] as const satisfies readonly CallState[];
 
-/** All 19 FSM events (Appendix C). */
+/** All 20 FSM events (Appendix C). */
 export const CALL_FSM_EVENTS = [
 	"send-pre-offer",
 	"receive-pre-offer",
@@ -47,6 +53,7 @@ export const CALL_FSM_EVENTS = [
 	"receive-answer",
 	"ice-connected",
 	"ice-disconnected",
+	"network-reconnect",
 	"restart-attempt",
 	"receive-offer-restart",
 	"user-decline",
@@ -85,6 +92,7 @@ export const CALL_FSM_EFFECTS = [
 	"open-audio",
 	"cancel-timeout",
 	"schedule-restart-if-initiator",
+	"await-restart-offer",
 	"send-offer-icerestart",
 	"answer-icerestart",
 	"send-end-call-peer",
@@ -121,7 +129,7 @@ export interface FsmTransitionRow {
 /**
  * The normative transition table — Appendix C of the implementation plan,
  * machine-readable form, plus the two supplementary rows (see file header).
- * 19 events / 21 rows.
+ * 20 events / 22 rows.
  */
 export const CALL_FSM_TRANSITIONS: readonly FsmTransitionRow[] = [
 	{
@@ -181,6 +189,19 @@ export const CALL_FSM_TRANSITIONS: readonly FsmTransitionRow[] = [
 		from: ["connected"],
 		to: "pending-reconnect",
 		effects: ["schedule-restart-if-initiator"],
+	},
+	{
+		// Appendix C `network-reconnect` (restored in P6-T1 — see file header).
+		// NON-INITIATOR entry into `reconnecting`: the side that did NOT send
+		// the original offer waits ≤60 s for the initiator's restarted OFFER
+		// (spec §3.2); the supervisor arms that wait as the row's effect.
+		// The initiator enters `reconnecting` via `restart-attempt` instead,
+		// hence the guard.
+		event: "network-reconnect",
+		from: ["pending-reconnect"],
+		to: "reconnecting",
+		effects: ["await-restart-offer"],
+		guard: "non-initiator",
 	},
 	{
 		event: "restart-attempt",

@@ -24,16 +24,22 @@ function rowsFor(state: CallState, event: CallFsmEvent): FsmTransitionRow[] {
 function ctxFor(event: CallFsmEvent): TransitionContext | undefined {
 	if (event === "restart-attempt") return { isInitiator: true };
 	if (event === "receive-offer-restart") return { isInitiator: false };
+	// network-reconnect (restored Appendix C row, P6-T1) is the non-initiator's
+	// entry into `reconnecting`; the initiator uses restart-attempt.
+	if (event === "network-reconnect") return { isInitiator: false };
 	return undefined;
 }
 
 describe("transition table integrity", () => {
-	test("10 states, 19 events, 21 rows (19 base + 2 supplementary)", () => {
+	test("10 states, 20 events, 22 rows (20 base + 2 supplementary)", () => {
+		// P6-T1 restored the normative Appendix C `network-reconnect` event
+		// (non-initiator reconnect entry) that the P2 port had omitted:
+		// 19 → 20 events, 21 → 22 rows. All other table content unchanged.
 		expect(CALL_STATES.length).toBe(10);
-		expect(CALL_FSM_EVENTS.length).toBe(19);
-		expect(CALL_FSM_TRANSITIONS.length).toBe(21);
+		expect(CALL_FSM_EVENTS.length).toBe(20);
+		expect(CALL_FSM_TRANSITIONS.length).toBe(22);
 		const distinctEvents = new Set(CALL_FSM_TRANSITIONS.map((r) => r.event));
-		expect(distinctEvents.size).toBe(19);
+		expect(distinctEvents.size).toBe(20);
 		for (const e of CALL_FSM_EVENTS) {
 			expect(distinctEvents.has(e)).toBe(true);
 		}
@@ -71,7 +77,7 @@ describe("transition table integrity", () => {
 	});
 });
 
-describe("exhaustive 10 states × 19 events matrix", () => {
+describe("exhaustive 10 states × 20 events matrix", () => {
 	test("every pair: next-state + effects per table, or InvalidCallTransitionError", () => {
 		let validCount = 0;
 		let invalidCount = 0;
@@ -93,7 +99,7 @@ describe("exhaustive 10 states × 19 events matrix", () => {
 				}
 			}
 		}
-		expect(validCount + invalidCount).toBe(190);
+		expect(validCount + invalidCount).toBe(200);
 		// Sanity: the machine is neither total nor degenerate.
 		expect(validCount).toBeGreaterThan(40);
 		expect(invalidCount).toBeGreaterThan(40);
@@ -155,6 +161,21 @@ describe("hand-written expectations (spot-checks of Appendix C rows)", () => {
 			next: "reconnecting",
 			effects: ["send-offer-icerestart"],
 		});
+	});
+	test("network-reconnect: pending-reconnect -> reconnecting (guard non-initiator, P6-T1)", () => {
+		expect(
+			transition("pending-reconnect", "network-reconnect", { isInitiator: false }),
+		).toEqual({
+			next: "reconnecting",
+			effects: ["await-restart-offer"],
+		});
+		// The initiator must use restart-attempt instead.
+		expect(() =>
+			transition("pending-reconnect", "network-reconnect", { isInitiator: true }),
+		).toThrow(InvalidCallTransitionError);
+		expect(() => transition("connected", "network-reconnect", { isInitiator: false })).toThrow(
+			InvalidCallTransitionError,
+		);
 	});
 	test("receive-offer-restart: reconnecting -> connecting (guard non-initiator)", () => {
 		expect(
@@ -272,6 +293,14 @@ describe("guards", () => {
 			InvalidCallTransitionError,
 		);
 	});
+	test("network-reconnect requires isInitiator === false (initiator uses restart-attempt)", () => {
+		expect(() => transition("pending-reconnect", "network-reconnect")).toThrow(
+			InvalidCallTransitionError,
+		);
+		expect(() =>
+			transition("pending-reconnect", "network-reconnect", { isInitiator: true }),
+		).toThrow(InvalidCallTransitionError);
+	});
 });
 
 describe("invalid input handling", () => {
@@ -351,8 +380,11 @@ describe("scenario walks (StateMachine class)", () => {
 		// ...and ICE reconnects:
 		expect(sm.send("ice-connected").next).toBe("connected");
 	});
-	test("non-initiator reconnect flow: receive-offer-restart -> connecting", () => {
-		const sm = new StateMachine("reconnecting");
+	test("non-initiator reconnect flow: network-reconnect -> receive-offer-restart -> connecting", () => {
+		const sm = new StateMachine("connected");
+		expect(sm.send("ice-disconnected").next).toBe("pending-reconnect");
+		// Non-initiator entry into `reconnecting` (restored Appendix C row, P6-T1).
+		expect(sm.send("network-reconnect", { isInitiator: false }).next).toBe("reconnecting");
 		expect(sm.send("receive-offer-restart", { isInitiator: false }).next).toBe("connecting");
 		expect(sm.send("ice-connected").next).toBe("connected");
 	});

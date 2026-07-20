@@ -38,6 +38,13 @@ export const ICE_RESTART_INTERVAL_MS = 5_000;
 /** Max ICE restart attempts before giving up (Android, §3.2). */
 export const ICE_RESTART_MAX_ATTEMPTS = 5;
 
+/**
+ * How long the NON-INITIATOR (callee) waits for the initiator's restarted
+ * OFFER after an ICE disconnect before declaring `ice-failed` (spec §3.2:
+ * "non-initiator waits ≤60 s"). Android `PeerConnectionWrapper` behavior.
+ */
+export const NON_INITIATOR_RECONNECT_WAIT_MS = 60_000;
+
 // ---------------------------------------------------------------------------
 // Freshness (§3.1)
 // ---------------------------------------------------------------------------
@@ -243,15 +250,20 @@ export function defaultIceServers(): IceServer[] {
 
 const TURN_USER_RE = new RegExp(SESSION_TURN_CREDENTIALS.username, "g");
 const TURN_PASS_RE = new RegExp(SESSION_TURN_CREDENTIALS.password, "g");
+// `a=fingerprint:<algo> <value>` — matched mid-line too (P5-T3: error
+// messages and JSON blobs can embed SDP fragments anywhere, not just as
+// standalone lines). Over-redaction is safe; under-redaction is not.
+const FINGERPRINT_RE = /a=fingerprint:\S+(?:[ \t]+\S+)?/g;
 
 /**
  * Mask anything sensitive before it hits logs:
  * - the TURN username and password, wherever they appear;
- * - DTLS fingerprint SDP lines (`a=fingerprint:...` → `a=fingerprint:[REDACTED]`).
+ * - DTLS fingerprints (`a=fingerprint:...` → `a=fingerprint:[REDACTED]`),
+ *   both as standalone SDP lines and embedded mid-line in other text.
  */
 export function redactSensitive(text: string): string {
 	return text
 		.replace(TURN_USER_RE, "[REDACTED-TURN-USER]")
 		.replace(TURN_PASS_RE, "[REDACTED-TURN-PASS]")
-		.replace(/^a=fingerprint:.*$/gm, "a=fingerprint:[REDACTED]");
+		.replace(FINGERPRINT_RE, "a=fingerprint:[REDACTED]");
 }
