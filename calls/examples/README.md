@@ -1,5 +1,9 @@
 # @session.js/calls — examples
 
+> Note: the repo-root `.gitignore` has a blanket `examples` pattern, so new
+> files in this directory must be added with `git add -f` (tracked files are
+> unaffected by the ignore rule).
+
 Two runnable examples:
 
 | File | What it does | Needs network? |
