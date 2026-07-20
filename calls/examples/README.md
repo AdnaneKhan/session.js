@@ -1,8 +1,8 @@
 # @session.js/calls — examples
 
-> Note: the repo-root `.gitignore` has a blanket `examples` pattern, so new
-> files in this directory must be added with `git add -f` (tracked files are
-> unaffected by the ignore rule).
+> Note: the repo-root `.gitignore` ignores only the ROOT-level `examples`
+> sandbox (the pattern is anchored as `/examples`), so files in this
+> directory track normally.
 
 Two runnable examples:
 
