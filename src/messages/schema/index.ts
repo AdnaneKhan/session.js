@@ -1,3 +1,4 @@
+export { CallMessage } from "./call-message";
 export { VisibleMessage } from "./visible-message";
 export { ConfigurationMessage } from "./configuration-message";
 export { MessageRequestResponse } from "./conversation-request-message";

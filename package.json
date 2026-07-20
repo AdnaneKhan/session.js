@@ -18,7 +18,8 @@
 		".": "./dist/index.js",
 		"./polling": "./dist/polling/index.js",
 		"./storage": "./dist/storage/index.js",
-		"./schema": "./dist/messages/schema/index.js"
+		"./schema": "./dist/messages/schema/index.js",
+		"./network": "./dist/network/index.js"
 	},
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",

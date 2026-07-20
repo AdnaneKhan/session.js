@@ -18,6 +18,21 @@ import {
 } from "@/messages";
 import { isEqual, sample } from "lodash";
 
+/**
+ * Sets the polling interval on all Pollers registered with this Session instance.
+ * Pollers that are already polling restart with the new interval; pollers with
+ * `interval: null` get an interval assigned and start polling once the instance is authorized.
+ * @param interval — Polling interval in milliseconds, must be an integer > 0
+ */
+export function setPollInterval(this: Session, interval: number) {
+	if (!Number.isInteger(interval) || interval <= 0)
+		throw new SessionValidationError({
+			code: SessionValidationErrorCode.InvalidOptions,
+			message: "Poll interval must be a positive integer",
+		});
+	this.pollers.forEach((poller) => poller.setInterval(interval));
+}
+
 export function addPoller(this: Session, poller: Poller) {
 	if (!(poller instanceof Poller))
 		throw new SessionValidationError({

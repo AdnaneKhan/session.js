@@ -17,7 +17,8 @@ import { getMnemonic, setMnemonic } from "./get-set-mnemomic";
 import { sendMessage } from "./send-message";
 import { blindSessionId, encodeSogsMessage, signSogsRequest, sendSogsRequest } from "./sogs";
 import { getOurSwarm, getSwarmsFor } from "./swarms";
-import { addPoller } from "./polling";
+import { addPoller, setPollInterval } from "./polling";
+import { sendCallMessage } from "./send-call-message";
 import { getSnodes } from "./snodes";
 import { getFile } from "./get-file";
 import { deleteMessage, deleteMessages } from "./delete-message";
@@ -145,6 +146,14 @@ export class Session {
 	/** Add Poller class instance to this Session instance to start polling new messages */
 	public addPoller = addPoller.bind(this);
 
+	/**
+	 * Advanced use. Sets polling interval on all registered pollers of this Session instance.
+	 * Useful to boost polling cadence during time-sensitive operations (e.g. voice call signaling)
+	 * and restore it afterwards
+	 * @param interval — Polling interval in milliseconds, must be an integer > 0
+	 */
+	public setPollInterval = setPollInterval.bind(this);
+
 	/** Download attachment received in message object. Returns File with decrypted content */
 	public getFile = getFile.bind(this);
 
@@ -159,6 +168,20 @@ export class Session {
 	 * @returns `Promise<{ messageHash: string, syncMessageHash: string }>` — hashes (identifiers) of the messages sent (visible and sync message)
 	 */
 	public sendMessage = sendMessage.bind(this);
+
+	/**
+	 * Sends a Session call signaling message (PRE_OFFER, OFFER, ANSWER, ICE_CANDIDATES, END_CALL)
+	 * to another Session ID. The message is stored in the recipient's swarm with a 5-minute TTL.
+	 * Pass `isSyncMessage: true` to store the message to your OWN swarm instead (self-sync, used
+	 * for ANSWER/END_CALL so linked devices stop ringing; `to` must be your own Session ID then —
+	 * the calls package calls this method twice: once to the peer, once to self).
+	 * Might throw SessionFetchError if there is a connection issue
+	 * @param to — Session ID of the recipient (or own Session ID when isSyncMessage is true)
+	 * @param callMessage — Call signaling payload: type, call uuid (stringified UUIDv4) and SDP/ICE fields
+	 * @param options.isSyncMessage — Store to own swarm (self-sync) instead of sending to a peer. Default false
+	 * @returns `Promise<{ messageHash: string, timestamp: number }>` — hash (identifier) of the stored message and its timestamp
+	 */
+	public sendCallMessage = sendCallMessage.bind(this);
 
 	/**
 	 * Convert unblinded (prefix 05) Session ID to blinded Session ID (prefix 15)
