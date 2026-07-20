@@ -273,12 +273,29 @@ export type CallMessage = {
 	uuid: string;
 	type: SignalService.CallMessage.Type;
 	from: string;
+	/** Envelope timestamp in milliseconds */
+	timestamp: number;
+	/** SDP offers/answers for OFFER/ANSWER or ICE candidates for ICE_CANDIDATES */
+	sdps: string[];
+	/** Parallel array to `sdps`, only set for ICE_CANDIDATES */
+	sdpMLineIndexes: number[];
+	/** Parallel array to `sdps`, only set for ICE_CANDIDATES */
+	sdpMids: string[];
 };
 export function mapCallMessage({ content, envelope }: Content): CallMessage {
+	const c = content.callMessage!;
+	let timestamp = envelope.timestamp;
+	if (typeof timestamp !== "number") {
+		timestamp = timestamp.toNumber();
+	}
 	return {
-		uuid: content.callMessage!.uuid,
-		type: content.callMessage!.type,
+		uuid: c.uuid,
+		type: c.type,
 		from: envelope.source,
+		timestamp,
+		sdps: [...(c.sdps ?? [])],
+		sdpMLineIndexes: [...(c.sdpMLineIndexes ?? [])],
+		sdpMids: [...(c.sdpMids ?? [])],
 	};
 }
 
