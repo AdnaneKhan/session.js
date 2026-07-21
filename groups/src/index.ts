@@ -5,6 +5,7 @@
 // COPYING.provenance.
 export { GroupManager, type GroupManagerDeps } from "./group-manager";
 export { KeypairRegistry } from "./keypairs";
+export { generateGroupAddress, generateEncryptionKeypair } from "./keygen";
 export {
 	GroupStorage,
 	InMemoryGroupStorage,

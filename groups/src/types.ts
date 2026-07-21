@@ -167,6 +167,12 @@ export interface GroupManagerOptions {
 	now?: () => number;
 	/** Logger; nothing sensitive (keys) is ever passed to it. */
 	logger?: GroupLogger;
+	/**
+	 * Inbound NEW-invite gate (spec §2.2): accept an invite only from ourselves
+	 * or an approved sender. Default: accept from anyone (`() => true`) — a
+	 * programmatic agent opts into its own approval policy.
+	 */
+	isSenderApproved?: (from: string) => boolean;
 }
 
 /** Logger signature shared across the package. */

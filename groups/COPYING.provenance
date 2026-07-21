@@ -49,5 +49,8 @@ FRESH-WRITTEN FILES
   src/errors.ts       — written fresh (error taxonomy). SPDX: AGPL-3.0-or-later.
   src/storage.ts      — written fresh (closed_group:{id}:* storage schema +
                         InMemoryGroupStorage). SPDX: AGPL-3.0-or-later.
+  src/keygen.ts       — written fresh (group address ed→x25519 + x25519
+                        encryption keypair generation, plan §2.1; noble).
+                        SPDX: AGPL-3.0-or-later.
   src/index.ts        — written fresh (barrel). SPDX: AGPL-3.0-or-later.
   test/**             — written fresh. SPDX: AGPL-3.0-or-later.

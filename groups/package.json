@@ -36,6 +36,10 @@
 	"peerDependencies": {
 		"@session.js/client": ">=0.0.57-calls.1"
 	},
+	"dependencies": {
+		"@noble/ciphers": "^2.1.1",
+		"@noble/curves": "^2.0.1"
+	},
 	"devDependencies": {
 		"@types/bun": "latest",
 		"typescript": "^5.0.0"
