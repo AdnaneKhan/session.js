@@ -30,6 +30,7 @@ import {
 	sineFrame,
 	type Call,
 	type CallLogger,
+	type CallManagerOptions,
 	type SessionLike,
 } from "../src/index.js";
 
@@ -120,6 +121,12 @@ export interface VoiceAgentOptions {
 	logger?: CallLogger;
 	/** Auto-accept inbound calls (default true). */
 	autoAccept?: boolean;
+	/**
+	 * Extra options for the underlying CallManager (ICE servers, transport
+	 * policy, timeouts…). E.g. `{ iceServers: [] }` forces host/loopback-only
+	 * ICE for a fully offline, deterministic setup.
+	 */
+	callManager?: CallManagerOptions;
 }
 
 export interface VoiceAgent {
@@ -134,7 +141,7 @@ export interface VoiceAgent {
 export function startVoiceAgent(session: SessionLike, options: VoiceAgentOptions = {}): VoiceAgent {
 	const log: CallLogger =
 		options.logger ?? ((level, msg) => console.log(`[calls:${level}] ${msg}`));
-	const manager = new CallManager(session, { logger: log });
+	const manager = new CallManager(session, { logger: log, ...options.callManager });
 
 	manager.on("incoming", (call) => {
 		log("info", `incoming call from ${call.info.peer} uuid=${call.info.uuid}`);

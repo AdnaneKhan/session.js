@@ -2,7 +2,9 @@
 //
 // offline-echo.ts — full-stack demo WITHOUT any Session network: two
 // CallManagers (A + B) over an in-process signaling bus, using the REAL
-// werift PeerConnectionManager media plane (host/loopback ICE).
+// werift PeerConnectionManager media plane. Both agents are created with
+// `iceServers: []` so ICE is host/loopback-only — deterministic, zero
+// external network (no STUN/TURN), CI-safe.
 //
 //   A calls B → B auto-accepts and wires the EchoStub→PassthroughTTS voice
 //   pipeline → A sends 2 s of 440 Hz sine → B's echo returns the audio →
@@ -99,8 +101,16 @@ async function main(): Promise<void> {
 	const logA = (level: string, msg: string): void => console.log(`[A:${level}] ${msg}`);
 	const logB = (level: string, msg: string): void => console.log(`[B:${level}] ${msg}`);
 
-	const agentA = startVoiceAgent(a, { logger: logA, autoAccept: true });
-	const agentB = startVoiceAgent(b, { logger: logB, autoAccept: true });
+	const agentA = startVoiceAgent(a, {
+		logger: logA,
+		autoAccept: true,
+		callManager: { iceServers: [] },
+	});
+	const agentB = startVoiceAgent(b, {
+		logger: logB,
+		autoAccept: true,
+		callManager: { iceServers: [] },
+	});
 
 	// B: count the audio frames the echo pipeline receives (for reporting).
 	let bReceived = 0;
@@ -125,8 +135,10 @@ async function main(): Promise<void> {
 	}
 	if (call.info.state !== "connected") {
 		console.error(`offline-echo FAILED: never connected (state=${call.info.state})`);
-		process.exitCode = 1;
-		return;
+		// Explicit exit: werift can leave internal timers/handles on the event
+		// loop after a failed setup, which would otherwise keep the process
+		// alive until CI's step timeout.
+		process.exit(1);
 	}
 	console.log("offline-echo: connected — sending 2 s of 440 Hz sine");
 	const frames = 2000 / FRAME_MS;
