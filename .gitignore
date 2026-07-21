@@ -181,3 +181,6 @@ dist
 # E2E run reports (generated; a sanitized sample is committed under
 # calls/e2e/reports-sample/).
 calls/e2e/reports/
+
+# Claude tooling state (worktrees, session files)
+.claude/

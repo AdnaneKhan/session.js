@@ -210,6 +210,84 @@ test("GroupPoller requires a 05-prefixed group pubkey", () => {
 	).toThrow();
 });
 
+test("GroupPoller caches undecryptable messages and retries them once a new keypair arrives", async () => {
+	const sender = getKeysFromSeed(generateSeedHex());
+	const oldKey = groupEncryptionKeys();
+	const newKey = groupEncryptionKeys();
+	const ourPubKey = bytesToHex(getKeysFromSeed(generateSeedHex()).x25519.publicKey);
+
+	// Message encrypted to the NEW key, but we only hold the OLD key at first.
+	const msg = await buildGroupMessage(sender, newKey.pubHex, "future", 1751000000000);
+
+	let keys: SessionKeys[] = [oldKey.keys];
+	let items = [msg];
+	const delivered: GroupPollerMessage[] = [];
+	const poller = new GroupPoller({
+		groupPubKey: GROUP_ADDR,
+		ourPubKey,
+		getEncryptionKeyPairs: () => keys,
+		request: async () => ({
+			messages: [
+				{
+					namespace: SnodeNamespaces.ClosedGroupMessage,
+					messages: items.map((i) => ({ hash: i.hash, data: i.data, expiration: 0, timestamp: 0 })),
+				},
+			],
+		}),
+		getSwarmsFor: async () => [SWARM],
+		storage: new InMemoryStorage(),
+		onMessagesReceived: (m) => delivered.push(...m),
+	});
+
+	// First poll: can't decrypt → cached, nothing delivered.
+	expect(await poller.poll()).toHaveLength(0);
+	expect(delivered).toHaveLength(0);
+
+	// The NEW keypair arrives (rotation). Nothing new on the swarm this round.
+	keys = [oldKey.keys, newKey.keys];
+	items = [];
+	const retried = await poller.poll();
+	expect(retried).toHaveLength(1);
+	expect(retried[0].content.dataMessage?.body).toBe("future");
+	expect(retried[0].envelope.senderIdentity).toBe(bytesToHex(sender.x25519.publicKey));
+	expect(delivered).toHaveLength(1);
+
+	// Cache is now drained: a further empty poll delivers nothing.
+	expect(await poller.poll()).toHaveLength(0);
+});
+
+test("GroupPoller decrypts an in-flight message with a historical (rotated-out) key", async () => {
+	const sender = getKeysFromSeed(generateSeedHex());
+	const oldKey = groupEncryptionKeys();
+	const newKey = groupEncryptionKeys();
+	const ourPubKey = bytesToHex(getKeysFromSeed(generateSeedHex()).x25519.publicKey);
+
+	// Encrypted to the OLD key (sent before the rotation landed).
+	const msg = await buildGroupMessage(sender, oldKey.pubHex, "inflight", 1751000000000);
+	const items = [msg];
+	const delivered: GroupPollerMessage[] = [];
+	const poller = new GroupPoller({
+		groupPubKey: GROUP_ADDR,
+		ourPubKey,
+		getEncryptionKeyPairs: () => [oldKey.keys, newKey.keys],
+		request: async () => ({
+			messages: [
+				{
+					namespace: SnodeNamespaces.ClosedGroupMessage,
+					messages: items.map((i) => ({ hash: i.hash, data: i.data, expiration: 0, timestamp: 0 })),
+				},
+			],
+		}),
+		getSwarmsFor: async () => [SWARM],
+		storage: new InMemoryStorage(),
+		onMessagesReceived: (m) => delivered.push(...m),
+	});
+
+	const out = await poller.poll();
+	expect(out).toHaveLength(1);
+	expect(out[0].content.dataMessage?.body).toBe("inflight");
+});
+
 test("GroupPoller with no keypairs delivers nothing (undecryptable path)", async () => {
 	const sender = getKeysFromSeed(generateSeedHex());
 	const group = groupEncryptionKeys();

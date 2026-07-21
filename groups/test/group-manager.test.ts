@@ -64,9 +64,10 @@ test("saveGroup persists to storage + index", async () => {
 	expect(reloaded.getGroup(GROUP_A)?.name).toBe("g");
 });
 
-test("re-emits group chat messages from the session's `message` event", () => {
+test("re-emits group chat messages from the session's `message` event", async () => {
 	const session = new FakeGroupSession();
 	const manager = new GroupManager(session);
+	await manager.saveGroup(sampleState()); // known active group
 	const received: GroupMessageEvent[] = [];
 	manager.on("groupMessage", (m) => received.push(m));
 
@@ -81,6 +82,26 @@ test("re-emits group chat messages from the session's `message` event", () => {
 	expect(received).toHaveLength(1);
 	expect(received[0].text).toBe("hi");
 	expect(received[0].groupId).toBe(GROUP_A);
+});
+
+test("drops group chat for unknown or inactive groups", async () => {
+	const session = new FakeGroupSession();
+	const manager = new GroupManager(session);
+	await manager.saveGroup(sampleState({ publicKey: "05" + "99".repeat(32), active: false }));
+	const received: GroupMessageEvent[] = [];
+	manager.on("groupMessage", (m) => received.push(m));
+
+	// Unknown group.
+	session.fireMessage({ type: "group", groupId: GROUP_A, from: MEMBER_A, id: "1", timestamp: 1 });
+	// Known but inactive group.
+	session.fireMessage({
+		type: "group",
+		groupId: "05" + "99".repeat(32),
+		from: MEMBER_A,
+		id: "2",
+		timestamp: 1,
+	});
+	expect(received).toHaveLength(0);
 });
 
 test("ignores non-group (private) messages on the `message` event", () => {

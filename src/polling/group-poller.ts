@@ -58,6 +58,10 @@ export type GroupPollerOptions = {
 const RE_POLL_THRESHOLD = 95; // a near-full page → re-poll immediately
 const ACTIVE_WINDOW = 2 * 24 * 60 * 60 * 1000; // last activity < 2 days
 const MEDIUM_WINDOW = 7 * 24 * 60 * 60 * 1000; // last activity < 7 days
+const UNDECRYPTABLE_CACHE_LIMIT = 200; // bound the retry cache
+
+/** A message that decoded but no current keypair could decrypt (cached for retry). */
+type UndecryptableItem = { hash: string; data: string };
 
 export class GroupPoller {
 	readonly #groupPubKey: string;
@@ -219,37 +223,104 @@ export class GroupPoller {
 
 		const keypairs = await this.#opts.getEncryptionKeyPairs();
 		const decrypted: GroupPollerMessage[] = [];
+		const newlyUndecryptable: UndecryptableItem[] = [];
+
 		for (const item of items) {
 			// Global message-hash dedupe (hashes are swarm-unique).
 			if (await storage.has("message_hash:" + item.hash)) continue;
 			await storage.set("message_hash:" + item.hash, this.#now().toString());
 
-			const content = extractContent(item.data);
-			if (content === null) continue;
-
-			const envelope = decodeMessage(content, {
-				overrideSource: this.#groupPubKey,
-				ourPubKey: this.#ourPubKey,
-			});
-			if (envelope === null) continue;
-
-			try {
-				const plaintext = decryptMessage(keypairs, envelope);
-				// Drop our own messages (real author recovered from the sealed box).
-				if (envelope.senderIdentity === this.#ourPubKey) continue;
-				decrypted.push({
-					hash: item.hash,
-					envelope,
-					content: SignalService.Content.decode(new Uint8Array(plaintext)),
-				});
-				this.#lastActivity = this.#now();
-			} catch {
-				// Undecryptable with the current keypairs — the consumer (GroupManager)
-				// caches these for retry when a new keypair arrives (P5). Skip here.
+			const result = this.#tryDecrypt(item, keypairs);
+			if (result === "own" || result === "skip") continue;
+			if (result === "fail") {
+				newlyUndecryptable.push({ hash: item.hash, data: item.data });
+				continue;
 			}
+			decrypted.push(result);
+			this.#lastActivity = this.#now();
 		}
+
+		// Retry previously-cached undecryptable messages: a new keypair may have
+		// arrived since they were stored (keypair rotation, spec §2.3/§2.5).
+		const cached = await this.#getUndecryptable();
+		const stillUndecryptable: UndecryptableItem[] = [];
+		for (const item of cached) {
+			const result = this.#tryDecrypt(item, keypairs);
+			if (result === "own" || result === "skip") continue; // resolved/dropped
+			if (result === "fail") {
+				stillUndecryptable.push(item);
+				continue;
+			}
+			decrypted.push(result);
+			this.#lastActivity = this.#now();
+		}
+
+		// Persist the undecryptable cache (bounded), folding in this round's failures.
+		const merged = [...stillUndecryptable, ...newlyUndecryptable].slice(-UNDECRYPTABLE_CACHE_LIMIT);
+		await this.#setUndecryptable(merged);
 
 		if (decrypted.length) this.#opts.onMessagesReceived(decrypted);
 		return decrypted;
+	}
+
+	/**
+	 * Attempt to decode + decrypt one wire item with the given keypairs.
+	 * - a decrypted message on success;
+	 * - `"own"` when the (successfully decrypted) author is us — dropped, never cached;
+	 * - `"skip"` when the payload cannot even be decoded (not a group message);
+	 * - `"fail"` when it decodes but no keypair decrypts it (cache for retry).
+	 */
+	#tryDecrypt(
+		item: { hash: string; data: string },
+		keypairs: SessionKeys[],
+	): GroupPollerMessage | "own" | "skip" | "fail" {
+		let content: Uint8Array | null;
+		try {
+			content = extractContent(item.data);
+		} catch {
+			return "skip";
+		}
+		if (content === null) return "skip";
+
+		const envelope = decodeMessage(content, {
+			overrideSource: this.#groupPubKey,
+			ourPubKey: this.#ourPubKey,
+		});
+		if (envelope === null) return "skip";
+
+		try {
+			const plaintext = decryptMessage(keypairs, envelope);
+			// Drop our own messages (real author recovered from the sealed box).
+			if (envelope.senderIdentity === this.#ourPubKey) return "own";
+			return {
+				hash: item.hash,
+				envelope,
+				content: SignalService.Content.decode(new Uint8Array(plaintext)),
+			};
+		} catch {
+			return "fail";
+		}
+	}
+
+	#undecryptableKey(): string {
+		return `closed_group:${this.#groupPubKey}:undecryptable`;
+	}
+
+	async #getUndecryptable(): Promise<UndecryptableItem[]> {
+		const stored = await this.#opts.storage.get(this.#undecryptableKey());
+		if (stored === null) return [];
+		try {
+			return JSON.parse(stored) as UndecryptableItem[];
+		} catch {
+			return [];
+		}
+	}
+
+	async #setUndecryptable(items: UndecryptableItem[]): Promise<void> {
+		if (items.length === 0) {
+			await this.#opts.storage.delete(this.#undecryptableKey());
+		} else {
+			await this.#opts.storage.set(this.#undecryptableKey(), JSON.stringify(items));
+		}
 	}
 }

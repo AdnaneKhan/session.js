@@ -16,7 +16,13 @@ import { bytesToHex, hexToBytes } from "@noble/ciphers/utils.js";
 import { GroupStorage, InMemoryGroupStorage, type StorageLike } from "./storage";
 import { KeypairRegistry } from "./keypairs";
 import { generateEncryptionKeypair, generateGroupAddress } from "./keygen";
-import { GroupTooLargeError, InvalidGroupError } from "./errors";
+import {
+	GroupTooLargeError,
+	InvalidGroupError,
+	GroupNotFoundError,
+	GroupInactiveError,
+	InvalidKeypairError,
+} from "./errors";
 import {
 	GroupControlMessageType,
 	type GroupSessionLike,
@@ -242,6 +248,36 @@ export class GroupManager extends EventEmitter {
 		return state;
 	}
 
+	// -- Group chat (P5) -----------------------------------------------------
+
+	/**
+	 * Send a visible chat message to a group we belong to. Sealed to the group's
+	 * latest encryption key and stored to the group swarm (namespace −10) with a
+	 * `GroupContext` (spec §2.3). Honors the group's deleteAfterSend timer.
+	 */
+	async sendMessage(
+		groupPubKey: string,
+		text?: string,
+		opts?: { expireTimer?: number },
+	): Promise<{ messageHash: string; timestamp: number }> {
+		const group = this.getGroup(groupPubKey);
+		if (!group) throw new GroupNotFoundError(groupPubKey);
+		if (!group.active) throw new GroupInactiveError(groupPubKey);
+
+		const latest = await this.#keypairs.getLatest(groupPubKey);
+		if (!latest) {
+			throw new InvalidKeypairError(`no encryption keypair for group ${groupPubKey}`, groupPubKey);
+		}
+
+		const expireTimer = opts?.expireTimer ?? (group.expirationTimer > 0 ? group.expirationTimer : 0);
+		return this.#session.sendGroupMessage({
+			to: groupPubKey,
+			encryptionPublicKey: latest.publicKey,
+			text,
+			...(expireTimer > 0 && { expirationType: "deleteAfterSend", expireTimer }),
+		});
+	}
+
 	// -- Inbound control dispatch --------------------------------------------
 
 	async #handleGroupUpdate(update: GroupUpdateEvent): Promise<void> {
@@ -320,6 +356,10 @@ export class GroupManager extends EventEmitter {
 
 	#handleGroupMessage(message: GroupMessageEvent): void {
 		if (message.type !== "group") return;
+		// Only surface chat for groups we are an active member of (unknown groups
+		// or ones we have left/were removed from are dropped).
+		const group = this.getGroup(message.groupId);
+		if (!group?.active) return;
 		this.emit("groupMessage", message);
 	}
 
