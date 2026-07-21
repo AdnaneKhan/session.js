@@ -30,12 +30,18 @@ src/keypairs.ts
 
 src/group-manager.ts
   Group lifecycle wiring adapted from session-desktop
-  `ts/session/group/closed-group.ts` (master @ d86076b, AGPLv3) and
-  session-android `.../messaging/groups/ClosedGroup.kt` (v1.19.1, GPLv3),
+  `ts/session/group/closed-group.ts` and `ts/receiver/closedGroups.ts`
+  (master @ d86076b, AGPLv3) and session-android `.../messaging/groups/
+  ClosedGroup.kt` / `.../ReceivedMessageHandler.kt` (v1.19.1, GPLv3),
   © Session Foundation, modified (restructured onto a structural
   GroupSessionLike + GroupStorage + KeypairRegistry, following the
-  @session.js/calls CallManager/CallSupervisor composition; P3 skeleton —
-  lifecycle bodies filled in by P4–P7). Licensed under AGPL-3.0-or-later.
+  @session.js/calls CallManager/CallSupervisor composition). Ports: formation
+  + per-member NEW invites (P4), inbound NEW gates + group chat send/receive
+  (P5), and the member lifecycle — add/NEW-invite + admin keypair-push,
+  admin-only remove + ENCRYPTION_KEY_PAIR rotation, leave/zombie/admin-disband,
+  rename, and the performIfValid receive gates: watermark, sender-∈-members,
+  admin-only removal, first-admin-not-removable (P6). Licensed under
+  AGPL-3.0-or-later.
 
 Expected remaining porting surface (IMPLEMENTATION.md §5, filled in P4–P7):
   src/handlers.ts          — inbound control dispatch adapted from

@@ -70,6 +70,17 @@ export class FakeGroupSession implements GroupSessionLike {
 	removeGroupPoller(_handle: GroupPollerHandle): void {
 		this.removedPollers += 1;
 	}
+	async sealKeypairWrapper(
+		_memberPubKey: string,
+		_keypair: { publicKey: Uint8Array; privateKey: Uint8Array },
+	): Promise<Uint8Array> {
+		return new Uint8Array(0);
+	}
+	async openKeypairWrapper(
+		_encryptedKeyPair: Uint8Array,
+	): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array } | null> {
+		return null;
+	}
 
 	// -- test drivers --------------------------------------------------------
 	fireGroupUpdate(update: GroupUpdateEvent): void {

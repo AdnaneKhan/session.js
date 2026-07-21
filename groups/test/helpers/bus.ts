@@ -7,7 +7,7 @@
 // poll would deliver it. This exercises lifecycle/routing/gates deterministically
 // without a network; the real seal/unseal path is covered at the core (G2) and
 // in the gated networked E2E (P8).
-import { bytesToHex } from "@noble/ciphers/utils.js";
+import { bytesToHex, hexToBytes } from "@noble/ciphers/utils.js";
 import type {
 	GroupSessionLike,
 	GroupUpdateEvent,
@@ -169,6 +169,36 @@ export class BusGroupSession implements GroupSessionLike {
 	}
 	removeGroupPoller(_handle: GroupPollerHandle): void {
 		this.removedPollers += 1;
+	}
+
+	// Keypair-wrapper seal/open: a deterministic, reversible stand-in for the
+	// client's Session-protocol wrapper crypto (which is covered at the core in
+	// G2-T1). The blob embeds the addressee so only that endpoint can "open" it —
+	// enough to exercise wrapper addressing + key recovery in lifecycle tests.
+	async sealKeypairWrapper(
+		memberPubKey: string,
+		keypair: { publicKey: Uint8Array; privateKey: Uint8Array },
+	): Promise<Uint8Array> {
+		const payload = JSON.stringify({
+			to: memberPubKey,
+			pub: bytesToHex(keypair.publicKey),
+			priv: bytesToHex(keypair.privateKey),
+		});
+		return new TextEncoder().encode("FAKEWRAP:" + payload);
+	}
+	async openKeypairWrapper(
+		encryptedKeyPair: Uint8Array,
+	): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array } | null> {
+		const s = new TextDecoder().decode(encryptedKeyPair);
+		if (!s.startsWith("FAKEWRAP:")) return null;
+		let parsed: { to: string; pub: string; priv: string };
+		try {
+			parsed = JSON.parse(s.slice("FAKEWRAP:".length));
+		} catch {
+			return null;
+		}
+		if (parsed.to !== this.id) return null; // not addressed to us
+		return { publicKey: hexToBytes(parsed.pub), privateKey: hexToBytes(parsed.priv) };
 	}
 
 	// -- test drivers --------------------------------------------------------

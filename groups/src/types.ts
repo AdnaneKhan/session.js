@@ -44,6 +44,25 @@ export interface GroupSessionLike {
 	}): Promise<{ messageHash: string; timestamp: number }>;
 
 	/**
+	 * Seal a group encryption keypair to a member's identity key, producing a
+	 * keypair-wrapper blob (Session-protocol seal, NO message padding; plaintext
+	 * is the `KeyPair` proto). Used to build ENCRYPTION_KEY_PAIR wrappers.
+	 */
+	sealKeypairWrapper(
+		memberPubKey: string,
+		keypair: { publicKey: Uint8Array; privateKey: Uint8Array },
+	): Promise<Uint8Array>;
+
+	/**
+	 * Open a keypair-wrapper blob addressed to us with our identity key.
+	 * Returns the recovered keypair (unprefixed byte keys), or null if it is not
+	 * addressed to us / cannot be opened.
+	 */
+	openKeypairWrapper(
+		encryptedKeyPair: Uint8Array,
+	): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array } | null>;
+
+	/**
 	 * Attach a poller for one group's swarm (namespace −10). The client decrypts
 	 * with the provided keypairs and routes decrypted messages through the
 	 * mapped `groupUpdate` / `message` events. Returns a handle to stop it.

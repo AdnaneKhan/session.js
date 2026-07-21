@@ -22,6 +22,8 @@ import {
 	GroupNotFoundError,
 	GroupInactiveError,
 	InvalidKeypairError,
+	NotAMemberError,
+	NotAnAdminError,
 } from "./errors";
 import {
 	GroupControlMessageType,
@@ -278,6 +280,203 @@ export class GroupManager extends EventEmitter {
 		});
 	}
 
+	// -- Member lifecycle (P6) -----------------------------------------------
+
+	/** Fetch-and-guard a group we can act on (known, active, we are a member). */
+	#requireActiveMemberGroup(groupPubKey: string): GroupState {
+		const group = this.getGroup(groupPubKey);
+		if (!group) throw new GroupNotFoundError(groupPubKey);
+		if (!group.active) throw new GroupInactiveError(groupPubKey);
+		if (!group.members.includes(this.ourId)) throw new NotAMemberError(groupPubKey, this.ourId);
+		return group;
+	}
+
+	async #requireLatestKeypair(groupPubKey: string) {
+		const latest = await this.#keypairs.getLatest(groupPubKey);
+		if (!latest) {
+			throw new InvalidKeypairError(`no encryption keypair for group ${groupPubKey}`, groupPubKey);
+		}
+		return latest;
+	}
+
+	/**
+	 * Add members (any current member may add, spec §2.4). Sends MEMBERS_ADDED to
+	 * the group swarm and a NEW invite DM (latest keypair) to each newcomer.
+	 * Receiving admins additionally keypair-push (handled inbound).
+	 */
+	async sendAddMembers(groupPubKey: string, membersToAdd: string[]): Promise<void> {
+		const group = this.#requireActiveMemberGroup(groupPubKey);
+		const newMembers = membersToAdd.filter((m) => !group.members.includes(m));
+		if (newMembers.length === 0) return;
+		const allMembers = dedupe([...group.members, ...newMembers]);
+		if (allMembers.length > CLOSED_GROUP_SIZE_LIMIT) {
+			throw new GroupTooLargeError(groupPubKey, CLOSED_GROUP_SIZE_LIMIT);
+		}
+		const latest = await this.#requireLatestKeypair(groupPubKey);
+
+		group.members = allMembers;
+		group.zombies = group.zombies.filter((z) => !newMembers.includes(z));
+		await this.saveGroup(group);
+
+		await this.#session.sendClosedGroupUpdate({
+			to: groupPubKey,
+			encryptionPublicKey: latest.publicKey,
+			controlMessage: {
+				type: GroupControlMessageType.MEMBERS_ADDED,
+				members: newMembers.map(hexToBytes),
+			},
+		});
+		await this.#sendNewInvites(group, newMembers, latest);
+		this.emit("groupChanged", group);
+	}
+
+	/** Send a NEW invite DM (with the given keypair) to each target member. */
+	async #sendNewInvites(
+		group: GroupState,
+		targetMembers: string[],
+		keypair: { publicKey: string; privateKey: string },
+	): Promise<void> {
+		for (const member of targetMembers) {
+			await this.#session.sendClosedGroupUpdate({
+				to: member,
+				controlMessage: {
+					type: GroupControlMessageType.NEW,
+					publicKey: hexToBytes(group.publicKey),
+					name: group.name,
+					members: group.members.map(hexToBytes),
+					admins: group.admins.map(hexToBytes),
+					encryptionKeyPair: {
+						publicKey: hexToBytes(keypair.publicKey),
+						privateKey: hexToBytes(keypair.privateKey),
+					},
+					...(group.expirationTimer > 0 && { expirationTimer: group.expirationTimer }),
+				},
+			});
+		}
+	}
+
+	/**
+	 * Remove members (admin-only, spec §2.4). Sends MEMBERS_REMOVED to the group
+	 * swarm, then — because revocation is weak — rotates the group encryption
+	 * keypair (§2.5), wrapping the new key for each remaining member.
+	 */
+	async sendRemoveMembers(groupPubKey: string, membersToRemove: string[]): Promise<void> {
+		const group = this.#requireActiveMemberGroup(groupPubKey);
+		if (!group.admins.includes(this.ourId)) {
+			throw new NotAnAdminError(groupPubKey, this.ourId);
+		}
+		if (membersToRemove.includes(this.ourId)) {
+			throw new InvalidGroupError("cannot remove yourself; use sendLeave", groupPubKey);
+		}
+		if (group.admins.length > 0 && membersToRemove.includes(group.admins[0])) {
+			throw new InvalidGroupError("the first admin cannot be removed; they can only leave", groupPubKey);
+		}
+		const latest = await this.#requireLatestKeypair(groupPubKey);
+		const stillMembers = group.members.filter((m) => !membersToRemove.includes(m));
+
+		group.members = stillMembers;
+		await this.saveGroup(group);
+
+		await this.#session.sendClosedGroupUpdate({
+			to: groupPubKey,
+			encryptionPublicKey: latest.publicKey,
+			controlMessage: {
+				type: GroupControlMessageType.MEMBERS_REMOVED,
+				members: membersToRemove.map(hexToBytes),
+			},
+		});
+		await this.#rotate(groupPubKey, stillMembers);
+		this.emit("groupChanged", group);
+	}
+
+	/** Rename the group (any member, spec §2.4). */
+	async sendRename(groupPubKey: string, newName: string): Promise<void> {
+		const group = this.#requireActiveMemberGroup(groupPubKey);
+		if (!newName?.length) {
+			throw new InvalidGroupError("group name must be non-empty", groupPubKey);
+		}
+		const latest = await this.#requireLatestKeypair(groupPubKey);
+		group.name = newName;
+		await this.saveGroup(group);
+		await this.#session.sendClosedGroupUpdate({
+			to: groupPubKey,
+			encryptionPublicKey: latest.publicKey,
+			controlMessage: { type: GroupControlMessageType.NAME_CHANGE, name: newName },
+		});
+		this.emit("groupChanged", group);
+	}
+
+	/** Leave the group (any member, spec §2.4). Sends MEMBER_LEFT then deletes locally. */
+	async sendLeave(groupPubKey: string): Promise<void> {
+		const group = this.#requireActiveMemberGroup(groupPubKey);
+		const latest = await this.#requireLatestKeypair(groupPubKey);
+		await this.#session.sendClosedGroupUpdate({
+			to: groupPubKey,
+			encryptionPublicKey: latest.publicKey,
+			controlMessage: { type: GroupControlMessageType.MEMBER_LEFT },
+		});
+		await this.#deleteClosedGroup(groupPubKey);
+	}
+
+	/**
+	 * Rotate the group encryption keypair (admin-only, §2.5): fresh x25519 pair,
+	 * a wrapper per remaining member sealed to their identity key, sent to the
+	 * group swarm sealed to the CURRENT (still-shared) key; the new pair is
+	 * appended locally only after the send.
+	 */
+	async #rotate(groupPubKey: string, targetMembers: string[]): Promise<void> {
+		const group = this.getGroup(groupPubKey);
+		if (!group || !group.admins.includes(this.ourId)) return;
+		const current = await this.#keypairs.getLatest(groupPubKey);
+		if (!current) return;
+
+		const newKeypair = generateEncryptionKeypair();
+		const wrappers: Array<{ publicKey: Uint8Array; encryptedKeyPair: Uint8Array }> = [];
+		for (const member of targetMembers) {
+			const encryptedKeyPair = await this.#session.sealKeypairWrapper(member, {
+				publicKey: hexToBytes(newKeypair.publicKey),
+				privateKey: hexToBytes(newKeypair.privateKey),
+			});
+			wrappers.push({ publicKey: hexToBytes(member), encryptedKeyPair });
+		}
+
+		await this.#session.sendClosedGroupUpdate({
+			to: groupPubKey,
+			encryptionPublicKey: current.publicKey,
+			controlMessage: { type: GroupControlMessageType.ENCRYPTION_KEY_PAIR, wrappers },
+		});
+		await this.#keypairs.append(groupPubKey, newKeypair);
+	}
+
+	/** Admin keypair-push reply (spec §2.4 race fix): DM the latest keypair to targets. */
+	async #pushLatestKeypair(group: GroupState, targetMembers: string[]): Promise<void> {
+		const latest = await this.#keypairs.getLatest(group.publicKey);
+		if (!latest) return;
+		for (const member of targetMembers) {
+			const encryptedKeyPair = await this.#session.sealKeypairWrapper(member, {
+				publicKey: hexToBytes(latest.publicKey),
+				privateKey: hexToBytes(latest.privateKey),
+			});
+			await this.#session.sendClosedGroupUpdate({
+				to: member,
+				controlMessage: {
+					type: GroupControlMessageType.ENCRYPTION_KEY_PAIR,
+					publicKey: hexToBytes(group.publicKey), // explicit group pubkey marks a reply
+					wrappers: [{ publicKey: hexToBytes(member), encryptedKeyPair }],
+				},
+			});
+		}
+	}
+
+	/** Delete a group for ourselves: stop polling, wipe keys + state. */
+	async #deleteClosedGroup(groupPubKey: string): Promise<void> {
+		this.#stopPolling(groupPubKey);
+		await this.#keypairs.removeAll(groupPubKey);
+		await this.#storage.deleteGroup(groupPubKey);
+		this.#groups.delete(groupPubKey);
+		this.emit("groupRemoved", { publicKey: groupPubKey });
+	}
+
 	// -- Inbound control dispatch --------------------------------------------
 
 	async #handleGroupUpdate(update: GroupUpdateEvent): Promise<void> {
@@ -285,10 +484,135 @@ export class GroupManager extends EventEmitter {
 			case GroupControlMessageType.NEW:
 				await this.#handleNew(update);
 				break;
-			// P5: ENCRYPTION_KEY_PAIR (rotation + undecryptable retry).
-			// P6: MEMBERS_ADDED / MEMBERS_REMOVED / MEMBER_LEFT / NAME_CHANGE.
-			default:
+			case GroupControlMessageType.ENCRYPTION_KEY_PAIR:
+				await this.#handleEncryptionKeyPair(update);
 				break;
+			case GroupControlMessageType.NAME_CHANGE:
+				await this.#handleNameChange(update);
+				break;
+			case GroupControlMessageType.MEMBERS_ADDED:
+				await this.#handleMembersAdded(update);
+				break;
+			case GroupControlMessageType.MEMBERS_REMOVED:
+				await this.#handleMembersRemoved(update);
+				break;
+			case GroupControlMessageType.MEMBER_LEFT:
+				await this.#handleMemberLeft(update);
+				break;
+			default:
+				// ENCRYPTION_KEY_PAIR_REQUEST (8) is unused by official clients — ignore.
+				break;
+		}
+	}
+
+	/**
+	 * Common gate for group-swarm membership/name updates (desktop
+	 * `performIfValid`): the group must be known, the update must be newer than
+	 * our join watermark, and the sender must be a current member.
+	 */
+	#validateGroupUpdate(update: GroupUpdateEvent): GroupState | null {
+		const group = this.getGroup(update.groupId);
+		if (!group) return null;
+		if (update.timestamp <= group.lastJoinedTimestamp) return null; // stale
+		if (!group.members.includes(update.from)) return null; // non-member
+		return group;
+	}
+
+	async #handleNameChange(update: GroupUpdateEvent): Promise<void> {
+		const group = this.#validateGroupUpdate(update);
+		if (!group || update.name === undefined) return;
+		group.name = update.name;
+		await this.saveGroup(group);
+		this.emit("groupChanged", group);
+	}
+
+	async #handleMembersAdded(update: GroupUpdateEvent): Promise<void> {
+		const group = this.#validateGroupUpdate(update);
+		if (!group) return;
+		const newMembers = update.members.filter((m) => !group.members.includes(m));
+		// A re-added zombie is no longer a zombie.
+		group.zombies = group.zombies.filter((z) => !update.members.includes(z));
+		if (newMembers.length === 0) {
+			await this.saveGroup(group);
+			return;
+		}
+		group.members = dedupe([...group.members, ...newMembers]);
+		await this.saveGroup(group);
+		this.emit("groupChanged", group);
+		// Admin race fix (§2.4): a receiving admin pushes the latest keypair to
+		// newcomers (covers remove/re-add while the admin was offline).
+		if (group.admins.includes(this.ourId)) {
+			await this.#pushLatestKeypair(group, newMembers);
+		}
+	}
+
+	async #handleMembersRemoved(update: GroupUpdateEvent): Promise<void> {
+		const group = this.getGroup(update.groupId);
+		if (!group) return;
+		if (update.timestamp <= group.lastJoinedTimestamp) return; // stale
+		if (!group.members.includes(update.from)) return; // non-member
+		const removed = update.members;
+		// The first admin cannot be removed (they can only leave).
+		if (group.admins.length > 0 && removed.includes(group.admins[0])) return;
+		// Removal is admin-only (enforced on receive).
+		if (!group.admins.includes(update.from)) return;
+
+		const membersAfter = group.members.filter((m) => !removed.includes(m));
+		if (!membersAfter.includes(this.ourId)) {
+			// We were removed: stop polling, wipe keys + state.
+			await this.#deleteClosedGroup(group.publicKey);
+			return;
+		}
+		group.members = membersAfter;
+		group.zombies = group.zombies.filter((z) => membersAfter.includes(z));
+		await this.saveGroup(group);
+		this.emit("groupChanged", group);
+	}
+
+	async #handleMemberLeft(update: GroupUpdateEvent): Promise<void> {
+		const group = this.getGroup(update.groupId);
+		if (!group) return;
+		if (update.timestamp <= group.lastJoinedTimestamp) return; // stale
+		const sender = update.from;
+		if (!group.members.includes(sender)) return; // non-member
+
+		// An admin leaving disbands the group for everyone.
+		if (group.admins.includes(sender)) {
+			await this.#deleteClosedGroup(group.publicKey);
+			return;
+		}
+		const newMembers = group.members.filter((m) => m !== sender);
+		// We are no longer a member → our own other device left → delete locally.
+		if (!newMembers.includes(this.ourId)) {
+			await this.#deleteClosedGroup(group.publicKey);
+			return;
+		}
+		// Another member left: remove them and record a zombie (left-but-not-removed).
+		group.members = newMembers;
+		if (!group.zombies.includes(sender)) group.zombies.push(sender);
+		await this.saveGroup(group);
+		this.emit("groupChanged", group);
+	}
+
+	async #handleEncryptionKeyPair(update: GroupUpdateEvent): Promise<void> {
+		// Explicit publicKey (1:1 reply) or the group-swarm envelope source.
+		const groupAddr = update.publicKey ?? update.groupId;
+		const group = this.getGroup(groupAddr);
+		if (!group?.active) return;
+		// Only admins distribute keypairs (group swarm) / replies.
+		if (!group.admins.includes(update.from)) return;
+		const ourWrapper = update.wrappers.find((w) => w.publicKey === this.ourId);
+		if (!ourWrapper) return;
+		const keypair = await this.#session.openKeypairWrapper(ourWrapper.encryptedKeyPair);
+		if (!keypair) return;
+		const added = await this.#keypairs.append(groupAddr, {
+			publicKey: bytesToHex(keypair.publicKey),
+			privateKey: bytesToHex(keypair.privateKey),
+		});
+		if (added) {
+			// New keypair → cached undecryptables retry on the next poll automatically
+			// (the GroupPoller's keypair provider now returns the new pair).
+			this.emit("groupChanged", group);
 		}
 	}
 

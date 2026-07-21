@@ -20,6 +20,7 @@ import { getOurSwarm, getSwarmsFor } from "./swarms";
 import { addPoller, setPollInterval } from "./polling";
 import { sendCallMessage } from "./send-call-message";
 import { sendGroupMessage, sendClosedGroupUpdate } from "./send-group-message";
+import { sealKeypairWrapper, openKeypairWrapper } from "./group-keypair-wrapper";
 import { getSnodes } from "./snodes";
 import { getFile } from "./get-file";
 import { deleteMessage, deleteMessages } from "./delete-message";
@@ -209,6 +210,17 @@ export class Session {
 	 * @returns `Promise<{ messageHash, timestamp }>`
 	 */
 	public sendClosedGroupUpdate = sendClosedGroupUpdate.bind(this);
+
+	/**
+	 * Advanced (closed groups). Seal a group encryption keypair to a member's
+	 * identity key, producing a keypair-wrapper blob (no message padding).
+	 */
+	public sealKeypairWrapper = sealKeypairWrapper.bind(this);
+	/**
+	 * Advanced (closed groups). Open a keypair-wrapper blob addressed to us.
+	 * Returns the recovered keypair, or null if not addressed to us / undecryptable.
+	 */
+	public openKeypairWrapper = openKeypairWrapper.bind(this);
 
 	/**
 	 * Convert unblinded (prefix 05) Session ID to blinded Session ID (prefix 15)
