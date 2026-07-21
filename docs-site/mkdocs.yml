@@ -1,7 +1,7 @@
 site_name: Session.js Docs
-site_url: https://sessionjs.github.io/docs
-repo_url: https://git.hloth.dev/session.js/docs
-repo_name: sessionjs/client
+site_url: https://adnanekhan.github.io/session.js/
+repo_url: https://github.com/AdnaneKhan/session.js
+repo_name: AdnaneKhan/session.js
 theme:
   name: material
   logo: assets/logo.jpeg
@@ -20,15 +20,15 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.indexes
-copyright: Created by Viktor Shchelochkov aka <a href="https://hloth.dev" target="_blank" rel="noreferrer">hloth.dev</a>
+copyright: Created by Viktor Shchelochkov aka <a href="https://hloth.dev" target="_blank" rel="noreferrer">hloth.dev</a> · Fork maintained by <a href="https://github.com/AdnaneKhan" target="_blank" rel="noreferrer">AdnaneKhan</a>
 extra:
   social:
     - icon: material/pencil
-      link: https://git.hloth.dev/session.js/docs
+      link: https://github.com/AdnaneKhan/session.js/tree/main/docs-site
       name: Edit documentation on GitHub
     - icon: fontawesome/brands/github
-      link: https://git.hloth.dev/session.js
-      name: Session.js on GitHub
+      link: https://github.com/AdnaneKhan/session.js
+      name: Session.js fork on GitHub
     - icon: fontawesome/brands/telegram
       link: https://t.me/sessionjs
       name: Session.js and other stuff Telegram channel
@@ -40,11 +40,11 @@ markdown_extensions:
   - pymdownx.superfences
   - admonition
   - pymdownx.details
+# Upstream also runs mkdocs-simple-hooks here, copying a Google
+# site-verification file for sessionjs.github.io — dropped in this fork
+# (verification belongs to the upstream domain, not this deployment).
 plugins:
   - search
-  - mkdocs-simple-hooks:
-      hooks:
-        on_post_build: "docs.hooks:copy_get"
 extra_css:
   - css/custom.css
 nav:

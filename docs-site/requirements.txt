@@ -1,0 +1,2 @@
+# Docs site build dependencies (GitHub Pages workflow: .github/workflows/docs.yml).
+mkdocs-material>=9.5,<10

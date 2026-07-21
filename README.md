@@ -13,7 +13,7 @@ Session.js allows you to create:
 - Per-instance storage and network settings — you can attach persistant storage to instance or use in-memory storage for throwaway one-time instances
 - Session.js can be used in browser, keeping private keys on client-side and doing network requests on server-side. See this in action with [my full-featured Session Web client](https://git.hloth.dev/hloth/session-web)!
 
-[Project roadmap](https://sessionjs.github.io/docs/#roadmap).
+[Project roadmap](https://adnanekhan.github.io/session.js/#roadmap).
 
 ## Voice-call additions (this fork)
 
@@ -52,7 +52,7 @@ Additions, all covered by tests:
 
 ## Getting started
 
-Visit documentation website for guide: [https://sessionjs.github.io/docs/](https://sessionjs.github.io/docs/)
+Visit documentation website for guide: [https://adnanekhan.github.io/session.js/](https://adnanekhan.github.io/session.js/) (built from [`docs-site/`](./docs-site), deployed by GitHub Actions). Upstream original: [sessionjs.github.io/docs](https://sessionjs.github.io/docs/).
 
 ## Credits
 
