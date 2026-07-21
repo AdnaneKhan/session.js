@@ -11,6 +11,12 @@
 //     "lodash"`) — Node's cjs-module-lexer cannot statically detect
 //     lodash's exports on the runner's Node 22; rewrite to a default
 //     import plus destructuring.
+//  4. Namespace imports of CJS packages (`import * as $protobuf from
+//     "protobufjs/minimal"`) — Node's namespace for a CJS module exposes
+//     only `default` plus statically-detectable names, and protobufjs's
+//     minimal entry is a dynamic re-export, so `.Reader`/`.roots`/...
+//     come back undefined at runtime. Rewrite to a default import
+//     (module.exports itself — the form Bun rewrites these to).
 //
 // Idempotent; no-op for specifiers/imports already in the safe form
 // (Bun sometimes rewrites these at install time — results converge either
@@ -41,11 +47,18 @@ const BARE_SUBPATH_REWRITES = {
 };
 const BARE = /(from\s*)(["'])([a-z@][^"']*)\2/g;
 const LODASH_NAMED = /import\s*\{([^}]+)\}\s*from\s*(["'])lodash\2\s*;?/g;
+// Must run before BARE (which would add `.js` and break this match).
+const STAR_AS_CJS = /import\s*\*\s*as\s+([\w$]+)\s*from\s*(["'])(protobufjs(?:\/minimal)?)\2\s*;?/g;
 let patchedFiles = 0;
 let patchedSpecifiers = 0;
 for (const file of walk(root)) {
 	const src = readFileSync(file, "utf8");
-	let out = src.replace(SPECIFIER, (match, kw, quote, spec) => {
+	let out = src.replace(STAR_AS_CJS, (_match, name, quote, pkg) => {
+		patchedSpecifiers++;
+		const target = pkg === "protobufjs" ? "protobufjs" : "protobufjs/minimal.js";
+		return `import ${name} from ${quote}${target}${quote};`;
+	});
+	out = out.replace(SPECIFIER, (match, kw, quote, spec) => {
 		if (/\.(js|mjs|cjs|json)$/.test(spec)) return match;
 		patchedSpecifiers++;
 		return `${kw}${quote}${spec}.js${quote}`;
