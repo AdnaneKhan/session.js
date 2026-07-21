@@ -11,7 +11,8 @@ import { RequestType } from "@session.js/types/network/request";
 import type { SessionKeys } from "@session.js/keypair";
 import type { Snode } from "@session.js/types/snode";
 import type { Swarm } from "@session.js/types/swarm";
-import type { Poller } from "@/polling";
+import type { Poller, GroupPoller } from "@/polling";
+import { addGroupPoller, removeGroupPoller } from "./group-poller-manager";
 
 import { getMnemonic, setMnemonic } from "./get-set-mnemomic";
 import { sendMessage } from "./send-message";
@@ -49,6 +50,8 @@ export class Session {
 	protected ourSwarms: Swarm[] | undefined;
 	protected ourSwarm: Swarm | undefined;
 	protected pollers = new Set<Poller>();
+	/** Fork addition (closed-groups): one poller per joined group (ns −10). */
+	public groupPollers = new Map<string, GroupPoller>();
 	public isAuthorized: boolean = false;
 
 	constructor(options?: { storage?: Storage; network?: Network }) {
@@ -229,6 +232,15 @@ export class Session {
 	 * linked devices reconcile group state (namespace 0, 30-day TTL).
 	 */
 	public sendConfigurationMessage = sendConfigurationMessage.bind(this);
+
+	/**
+	 * Advanced (closed groups). Attach a poller for one legacy closed group
+	 * (namespace −10). Decrypted group messages are emitted via the `groupUpdate`
+	 * (control) and `message` (chat) events. Returns a handle for removeGroupPoller.
+	 */
+	public addGroupPoller = addGroupPoller.bind(this);
+	/** Advanced (closed groups). Stop and remove a group poller by handle. */
+	public removeGroupPoller = removeGroupPoller.bind(this);
 
 	/**
 	 * Convert unblinded (prefix 05) Session ID to blinded Session ID (prefix 15)

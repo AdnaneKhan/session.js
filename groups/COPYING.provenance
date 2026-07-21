@@ -62,3 +62,5 @@ FRESH-WRITTEN FILES
                         SPDX: AGPL-3.0-or-later.
   src/index.ts        — written fresh (barrel). SPDX: AGPL-3.0-or-later.
   test/**             — written fresh. SPDX: AGPL-3.0-or-later.
+  e2e/**              — written fresh (offline E2E matrix + runner, P8).
+                        SPDX: AGPL-3.0-or-later.

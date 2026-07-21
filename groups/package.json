@@ -31,7 +31,8 @@
 	},
 	"scripts": {
 		"build": "rm -rf dist && tsc",
-		"test": "bun test"
+		"test": "bun test",
+		"e2e:matrix": "bun e2e/run-matrix.ts"
 	},
 	"peerDependencies": {
 		"@session.js/client": ">=0.0.57-calls.1"
