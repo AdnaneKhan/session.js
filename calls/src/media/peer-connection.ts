@@ -488,6 +488,15 @@ export class WeriftMediaSession implements MediaSession {
 						// best-effort
 					}
 				}
+				// FALLBACK SENDER GATE: werift can omit connectionStateChange
+				// "connected" on the answering side (observed: the callee's
+				// send queue never drained — greeting audio dropped). An open
+				// data channel proves DTLS is complete (SCTP rides on DTLS),
+				// so SRTP is ready too: open the audio send gate here if ICE
+				// already reported connected.
+				if (this.#lastEmittedState === "connected") {
+					this.#bridge.setSenderReady(true);
+				}
 			}),
 		);
 	}

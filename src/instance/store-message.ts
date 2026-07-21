@@ -60,9 +60,14 @@ export async function _storeMessage(
 		},
 		{
 			retries: 5,
+			// Retry on 421 (rotate to another swarm node) AND on transient
+			// connection failures (ECONNRESET / socket teardown — observed with
+			// the Node transport against live snodes). Without this, one reset
+			// permanently kills message delivery for the whole call.
 			shouldRetry: (e: Error) =>
 				e instanceof SessionFetchError &&
-				e.code === SessionFetchErrorCode.RetryWithOtherNode421Error,
+				(e.code === SessionFetchErrorCode.RetryWithOtherNode421Error ||
+					e.code === SessionFetchErrorCode.FetchFailed),
 		},
 	);
 }
