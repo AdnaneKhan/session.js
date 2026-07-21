@@ -85,6 +85,15 @@ nav:
     - API reference: voice/api-reference.md
     - Protocol & caveats: voice/protocol.md
     - Examples: voice/examples.md
+  - Closed groups:
+    - Overview: closed-groups/index.md
+    - Setup & install: closed-groups/setup.md
+    - Creating a group: closed-groups/creating.md
+    - Joining & receiving: closed-groups/joining.md
+    - Group messaging: closed-groups/messaging.md
+    - Managing members: closed-groups/members.md
+    - API reference: closed-groups/api-reference.md
+    - Protocol, limits & caveats: closed-groups/protocol.md
   - How Session Works:
     - Accounts in Session: principles/users.md
     - Messages in Session: principles/messages.md

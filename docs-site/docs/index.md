@@ -53,7 +53,8 @@ Jump to [getting started](./getting-started.md) page to start using Session.js!
         - Upstream: event with placeholder fields only
         - **This fork:** full `CallMessage` mapping (SDP/ICE fields) + `sendCallMessage()`
   - [X] Reactions
-  - [ ] Closed chats
+  - [X] Closed chats (legacy, 05-prefixed) — **this fork**: create / join / chat / member ops / rotation, see [Closed groups](./closed-groups/index.md)
+    - [ ] Group v2/v3 (03-prefixed) — separate protocol, future work
   - [ ] Open groups (SOGS)
   - [ ] Expirable messages
 - [X] Calls — **this fork**: headless 1:1 voice calls over WebRTC/Opus, see [Voice calls](./voice/index.md)
@@ -72,8 +73,9 @@ The original Session.js client was written by Viktor Shchelochkov aka hloth
 and is licensed under the [MIT license](https://git.hloth.dev/session.js/client/blob/main/LICENSE.md);
 those portions remain MIT in this fork (see
 [`LICENSES/MIT.txt`](https://github.com/AdnaneKhan/session.js/blob/main/LICENSES/MIT.txt)).
-The voice-call additions (`calls/`, ported from the Session Foundation's
-official clients) and the combined work are licensed
-**AGPL-3.0-or-later** — see the
-[`NOTICE`](https://github.com/AdnaneKhan/session.js/blob/main/NOTICE) and
-the [voice calls license notes](./voice/index.md#license).
+The voice-call additions (`calls/`) and the closed-group additions
+(`groups/`) — both ported from the Session Foundation's official clients — and
+the combined work are licensed **AGPL-3.0-or-later** — see the
+[`NOTICE`](https://github.com/AdnaneKhan/session.js/blob/main/NOTICE), the
+[voice calls license notes](./voice/index.md#license), and the
+[closed groups license notes](./closed-groups/index.md).

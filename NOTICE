@@ -26,24 +26,27 @@ Closed-group additions (this fork)
 ----------------------------------
 The groups/ package (@session.js/groups, branch feat/closed-groups) adds
 legacy closed-group support (05-prefixed groups) and is licensed
-AGPL-3.0-or-later. It will contain code ported — as direct ports, not a
+AGPL-3.0-or-later. It contains code ported — as direct ports, not a
 clean-room reimplementation — from the same Session Foundation clients:
 
   - session-desktop (AGPLv3) — group lifecycle, inbound control dispatch,
     group decryption, polling model
   - session-android (GPLv3)  — group update handling, formation, polling
 
-Per-file provenance is recorded in groups/COPYING.provenance (filled in as
-porting lands); the plan and verified protocol facts live in
-docs/closed-groups/IMPLEMENTATION.md. The core-client patches it relies on
-(GroupPoller, group send methods, crypto exports, ClosedGroupControlMessage
-schema/mapper) are written fresh from the published proto facts,
-Copyright (c) 2026 AdnaneKhan, and remain MIT-licensable for upstream
-contribution.
+Per-file provenance is recorded in groups/COPYING.provenance; the plan and
+verified protocol facts live in docs/closed-groups/IMPLEMENTATION.md. The
+core-client patches it relies on (GroupPoller + Session.addGroupPoller,
+sendGroupMessage / sendClosedGroupUpdate / sendConfigurationMessage,
+sealKeypairWrapper / openKeypairWrapper, the ./crypto export, the
+ClosedGroupControlMessage schema/mapper + groupUpdate/syncClosedGroups
+events, and the decryptForClosedGroup fix) are written fresh from the
+published proto facts, Copyright (c) 2026 AdnaneKhan, and remain
+MIT-licensable for upstream contribution.
 
-The combined work (forked client plus calls/ package) is distributed under
-the terms of the GNU Affero General Public License version 3 (AGPLv3);
-GPLv3 Android code combines into an AGPLv3 work per AGPLv3 §13.
+The combined work (forked client plus calls/ and groups/ packages) is
+distributed under the terms of the GNU Affero General Public License
+version 3 (AGPLv3); GPLv3 Android code combines into an AGPLv3 work per
+AGPLv3 §13.
 
 Fresh-written core-client patches
 ---------------------------------
@@ -52,7 +55,13 @@ published SessionProtos.proto field facts (no lines copied from GPL/AGPL
 sources), Copyright (c) 2026 AdnaneKhan, and remain MIT-licensable for
 contribution upstream to MIT session.js: the mapCallMessage mapper fix,
 the CallMessage schema class, Session.prototype.sendCallMessage,
-setPollInterval, and NetworkNode.
+setPollInterval, and NetworkNode (voice calls); and, for closed groups, the
+./crypto export, the decryptForClosedGroup fix, GroupPoller,
+Session.addGroupPoller/removeGroupPoller, sendGroupMessage,
+sendClosedGroupUpdate, sendConfigurationMessage, sealKeypairWrapper,
+openKeypairWrapper, the ClosedGroupControlMessage schema + mapClosedGroup-
+ControlMessage mapper + groupUpdate/syncClosedGroups events, GroupContext in
+visible sends, and the 30-day ConfigurationMessage TTL.
 
 AGPL §13 — network-use obligation
 ---------------------------------

@@ -1,6 +1,6 @@
 {
 	"name": "@session.js/groups",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "Legacy closed groups (05-prefixed) for the patched session.js client — group lifecycle, keypair rotation, group messaging. AGPL-3.0-or-later.",
 	"homepage": "https://github.com/AdnaneKhan/session.js",
 	"bugs": {
@@ -35,7 +35,7 @@
 		"e2e:matrix": "bun e2e/run-matrix.ts"
 	},
 	"peerDependencies": {
-		"@session.js/client": ">=0.0.57-calls.1"
+		"@session.js/client": ">=0.0.57-groups.1"
 	},
 	"dependencies": {
 		"@noble/ciphers": "^2.1.1",

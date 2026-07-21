@@ -11,7 +11,8 @@ programmatic group lifecycle — create, join, send, receive, member
 add/remove/leave, name changes, keypair rotation — speaking the official
 Session closed-group wire protocol, verified against the official clients.
 
-Status: **P0 (scaffolding)**. Branch: `feat/closed-groups`.
+Status: **implemented (P0–P9 complete)** — `@session.js/groups@0.1.0` with
+`@session.js/client@0.0.57-groups.1`. Branch: `feat/closed-groups`.
 
 ---
 

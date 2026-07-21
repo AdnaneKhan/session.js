@@ -1,6 +1,6 @@
 {
 	"name": "@session.js/client",
-	"version": "0.0.57-calls.1",
+	"version": "0.0.57-groups.1",
 	"description": "Use Session Messenger programmatically. Includes TypeScript and tests.",
 	"homepage": "https://git.hloth.dev/session.js/client",
 	"bugs": {
