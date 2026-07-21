@@ -15,6 +15,7 @@ import {
 	mapMessageRequestResponseMessage,
 	mapCallMessage,
 	mapClosedGroupControlMessage,
+	mapConfigurationClosedGroups,
 	type SyncMessage,
 } from "@/messages";
 import lodash from "lodash";
@@ -182,6 +183,15 @@ export function addPoller(this: Session, poller: Poller) {
 				} else {
 					this.avatar = undefined;
 					this.storage.delete(StorageKeys.Avatar);
+				}
+
+				// Fork addition (closed-groups support): surface closed groups
+				// carried in the legacy multi-device config sync so the groups
+				// package can reconcile them (P7). Written fresh — MIT,
+				// (c) 2026 AdnaneKhan, upstreamable.
+				const syncedClosedGroups = mapConfigurationClosedGroups(configMessage.content);
+				if (syncedClosedGroups.length) {
+					this._emit("syncClosedGroups", syncedClosedGroups);
 				}
 			}
 

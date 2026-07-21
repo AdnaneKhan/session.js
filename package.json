@@ -19,6 +19,7 @@
 		"./polling": "./dist/polling/index.js",
 		"./storage": "./dist/storage/index.js",
 		"./schema": "./dist/messages/schema/index.js",
+		"./crypto": "./dist/crypto/index.js",
 		"./network": "./dist/network/index.js"
 	},
 	"main": "dist/index.js",

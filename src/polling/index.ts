@@ -280,3 +280,9 @@ export class Poller {
 		return dataMessagesDecrypted;
 	}
 }
+
+export {
+	GroupPoller,
+	type GroupPollerMessage,
+	type GroupPollerOptions,
+} from "./group-poller";

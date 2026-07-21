@@ -111,41 +111,49 @@ export function decryptEnvelopeWithOurKey(keypair: SessionKeys, envelope: Envelo
 	}
 }
 
-function decryptForClosedGroup(encryptionKeyPairs: SessionKeys[], envelope: EnvelopePlus) {
-	try {
-		// Loop through all known group key pairs in reverse order (i.e. try the latest key pair first (which'll more than
-		// likely be the one we want) but try older ones in case that didn't work)
-		let decryptedContent: Uint8Array | undefined;
+/**
+ * Decrypt a closed-group message by trying each stored group encryption keypair
+ * **newest-first** (the latest is most likely the right one; older pairs cover
+ * in-flight / pre-rotation messages). The caller's `encryptionKeyPairs` array is
+ * iterated non-destructively (the upstream implementation mutated it with
+ * `.pop()` and shadowed the result in a loop-scoped variable, so every
+ * closed-group decryption failed — fixed here). On success the real sender's
+ * identity is stamped onto `envelope.senderIdentity` by
+ * {@link decryptWithSessionProtocol}. Throws if no keypair decrypts.
+ */
+export function decryptForClosedGroup(
+	encryptionKeyPairs: SessionKeys[],
+	envelope: EnvelopePlus,
+): Uint8Array {
+	let decryptedContent: Uint8Array | undefined;
 
-		// If an error happens in here, we catch it in the inner try-catch
-		// When the loop is done, we check if the decryption is a success;
-		// If not, we trigger a new Error which will trigger in the outer try-catch
-		do {
-			try {
-				const keypair = encryptionKeyPairs.pop()!;
-
-				const decryptedContent = decryptWithSessionProtocol(keypair, envelope, true);
-				if (decryptedContent?.byteLength) {
-					break;
-				}
-			} catch (e) {
-				0;
+	for (let i = encryptionKeyPairs.length - 1; i >= 0; i -= 1) {
+		try {
+			const candidate = decryptWithSessionProtocol(encryptionKeyPairs[i], envelope, true);
+			if (candidate?.byteLength) {
+				decryptedContent = candidate;
+				break;
 			}
-		} while (encryptionKeyPairs.length > 0);
-
-		if (!decryptedContent?.byteLength) {
-			throw new SessionCryptoError({
-				code: SessionCryptoErrorCode.MessageDecryptionFailed,
-				message: "Could not decrypt message for closed group with any of the keypairs.",
-			});
+		} catch {
+			// This keypair didn't open/verify the box — try the next (older) one.
 		}
+	}
 
-		return removeMessagePadding(decryptedContent);
-	} catch (e) {
-		// TODO: Session-Desktop says something about retrying to decrypt this message as soon as we receive new keypair...
+	if (!decryptedContent?.byteLength) {
 		throw new SessionCryptoError({
 			code: SessionCryptoErrorCode.MessageDecryptionFailed,
 			message: "Could not decrypt message for closed group with any of the keypairs.",
+		});
+	}
+
+	try {
+		return removeMessagePadding(decryptedContent);
+	} catch (e) {
+		throw new SessionCryptoError({
+			code: SessionCryptoErrorCode.MessageDecryptionFailed,
+			message:
+				"Failed to remove padding from closed group message" +
+				(e instanceof Error ? ": " + e.message : ""),
 		});
 	}
 }

@@ -365,6 +365,37 @@ export function mapClosedGroupControlMessage({ content, envelope }: Content): Cl
 	};
 }
 
+// Fork addition (closed-groups support): parse the legacy
+// ConfigurationMessage.closedGroups carried in a multi-device config sync
+// (each entry = { publicKey, name, encryptionKeyPair } plus members/admins).
+// Written fresh — SPDX-License-Identifier: MIT, (c) 2026 AdnaneKhan, upstreamable.
+export type ClosedGroupConfig = {
+	/** Group public key (05…hex). */
+	publicKey: string;
+	name: string;
+	/** Latest group encryption keypair (unprefixed 32-byte keys). */
+	encryptionKeyPair: { publicKey: Uint8Array; privateKey: Uint8Array };
+	/** Member public keys (05…hex). */
+	members: string[];
+	/** Admin public keys (05…hex). */
+	admins: string[];
+};
+export function mapConfigurationClosedGroups(content: SignalService.Content): ClosedGroupConfig[] {
+	const groups = content.configurationMessage?.closedGroups ?? [];
+	return groups
+		.filter((g) => g.publicKey?.length && g.encryptionKeyPair)
+		.map((g) => ({
+			publicKey: bytesToHex(g.publicKey!),
+			name: g.name ?? "",
+			encryptionKeyPair: {
+				publicKey: new Uint8Array(g.encryptionKeyPair!.publicKey),
+				privateKey: new Uint8Array(g.encryptionKeyPair!.privateKey),
+			},
+			members: (g.members ?? []).map((m) => bytesToHex(m)),
+			admins: (g.admins ?? []).map((a) => bytesToHex(a)),
+		}));
+}
+
 export type ReactionMessage = {
 	messageTimestamp: number;
 	messageAuthor: string;

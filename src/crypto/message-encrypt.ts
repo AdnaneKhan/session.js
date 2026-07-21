@@ -35,26 +35,34 @@ export async function encrypt(
 	const plainText = addMessagePadding(plainTextBuffer);
 
 	if (encryptForClosedGroup) {
-		// const hexEncryptionKeyPair = await Data.getLatestClosedGroupEncryptionKeyPair(device.key)
-		// if (!hexEncryptionKeyPair) {
-		//   throw new Error('Couldn\'t get key pair for closed group')
-		// }
-		// const hexPubFromECKeyPair = PubKey.cast(hexEncryptionKeyPair.publicHex)
-		// const cipherTextClosedGroup = await encryptUsingSessionProtocol(
-		//   hexPubFromECKeyPair,
-		//   plainText
-		// )
-		// return {
-		//   envelopeType: CLOSED_GROUP_MESSAGE,
-		//   cipherText: cipherTextClosedGroup,
-		// }
+		// Fork addition (closed-groups support). For a closed group the `recipient`
+		// here is the group's latest ENCRYPTION x25519 public key (unprefixed
+		// 32-byte hex) — NOT the group address. We seal to it with the same
+		// Session protocol (ed25519-sign ‖ senderEdPub ‖ sig, then crypto_box_seal);
+		// the group address is carried separately as the envelope `source`
+		// (see buildEnvelope). Written fresh — SPDX-License-Identifier: MIT,
+		// (c) 2026 AdnaneKhan, upstreamable.
+		const cipherTextClosedGroup = await encryptUsingSessionProtocol(
+			senderKeys,
+			recipient,
+			plainText,
+		);
+		return { envelopeType: CLOSED_GROUP_MESSAGE, cipherText: cipherTextClosedGroup };
 	}
 	const cipherText = await encryptUsingSessionProtocol(senderKeys, recipient, plainText);
 
 	return { envelopeType: SESSION_MESSAGE, cipherText };
 }
 
-async function encryptUsingSessionProtocol(
+/**
+ * Fork addition (closed-groups support): exported for the `@session.js/groups`
+ * package, which seals keypair wrappers with the Session protocol (ed25519-sign
+ * ‖ senderEdPub ‖ sig, then crypto_box_seal) WITHOUT message padding — the
+ * wrapper plaintext is a raw `KeyPair` proto. `encrypt()` pads before calling
+ * this for regular/group messages. Written fresh — SPDX-License-Identifier: MIT,
+ * (c) 2026 AdnaneKhan, upstreamable.
+ */
+export async function encryptUsingSessionProtocol(
 	senderKeys: SessionKeys,
 	recipient: string,
 	plaintext: Uint8Array,
@@ -109,6 +117,13 @@ type EncryptAndWrapMessage = {
 	isGroup: boolean;
 	plainTextBuffer: Uint8Array;
 	destination: string;
+	/**
+	 * Closed groups only: the group's latest ENCRYPTION x25519 public key
+	 * (unprefixed 32-byte hex) to seal to. `destination` remains the group
+	 * ADDRESS (envelope `source` + swarm store target). Ignored when
+	 * `isGroup` is false.
+	 */
+	encryptionPublicKey?: string;
 	namespace: number | null;
 } & SharedEncryptAndWrap;
 
@@ -134,6 +149,7 @@ export async function wrap(
 				plainTextBuffer,
 				ttl,
 				isGroup,
+				encryptionPublicKey,
 			}) => {
 				const { overRiddenTimestampBuffer } = await overwriteOutgoingTimestampWithNetworkTimestamp(
 					{ plainTextBuffer },
@@ -144,9 +160,15 @@ export async function wrap(
 					? SignalService.Envelope.Type.CLOSED_GROUP_MESSAGE
 					: SignalService.Envelope.Type.SESSION_MESSAGE;
 
+				// For closed groups, `destination` is the group address (envelope
+				// source + swarm store target) while encryption targets the group
+				// encryption public key. For 1:1 messages they are the same key.
+				const encryptionRecipient =
+					isGroup && encryptionPublicKey ? encryptionPublicKey : destination;
+
 				const { envelopeType, cipherText } = await encrypt(
 					senderKeys,
-					destination,
+					encryptionRecipient,
 					overRiddenTimestampBuffer,
 					encryptionBasedOnConversation,
 				);

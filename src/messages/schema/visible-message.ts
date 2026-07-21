@@ -68,6 +68,12 @@ export interface VisibleMessageParams extends ExpirableMessageParams {
 	preview?: Array<PreviewWithAttachmentUrl>;
 	reaction?: Reaction;
 	syncTarget?: string; // undefined means it is not a synced message
+	/**
+	 * Fork addition (closed-groups support): when set, adds a `GroupContext`
+	 * (`id` = UTF-8 of the 05-prefixed group id hex, `type` = DELIVER) so the
+	 * message is a legacy closed-group chat message.
+	 */
+	groupContext?: { groupId: string };
 }
 
 export class VisibleMessage extends ExpirableMessage {
@@ -81,6 +87,7 @@ export class VisibleMessage extends ExpirableMessage {
 	private readonly preview?: Array<PreviewWithAttachmentUrl>;
 
 	private readonly syncTarget?: string;
+	private readonly groupContext?: { groupId: string };
 
 	constructor(params: VisibleMessageParams) {
 		super({
@@ -102,6 +109,7 @@ export class VisibleMessage extends ExpirableMessage {
 		this.preview = params.preview;
 		this.reaction = params.reaction;
 		this.syncTarget = params.syncTarget;
+		this.groupContext = params.groupContext;
 	}
 
 	public contentProto(): SignalService.Content {
@@ -133,6 +141,15 @@ export class VisibleMessage extends ExpirableMessage {
 		}
 		if (this.syncTarget) {
 			dataMessage.syncTarget = this.syncTarget;
+		}
+
+		if (this.groupContext) {
+			// Legacy closed-group chat message: group id is the UTF-8 of the
+			// 05-prefixed hex string (not raw key bytes); type DELIVER.
+			dataMessage.group = new SignalService.GroupContext({
+				id: new TextEncoder().encode(this.groupContext.groupId),
+				type: SignalService.GroupContext.Type.DELIVER,
+			});
 		}
 
 		if (this.profile) {

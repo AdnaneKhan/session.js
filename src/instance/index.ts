@@ -19,6 +19,7 @@ import { blindSessionId, encodeSogsMessage, signSogsRequest, sendSogsRequest } f
 import { getOurSwarm, getSwarmsFor } from "./swarms";
 import { addPoller, setPollInterval } from "./polling";
 import { sendCallMessage } from "./send-call-message";
+import { sendGroupMessage, sendClosedGroupUpdate } from "./send-group-message";
 import { getSnodes } from "./snodes";
 import { getFile } from "./get-file";
 import { deleteMessage, deleteMessages } from "./delete-message";
@@ -184,6 +185,30 @@ export class Session {
 	 * @returns `Promise<{ messageHash: string, timestamp: number }>` — hash (identifier) of the stored message and its timestamp
 	 */
 	public sendCallMessage = sendCallMessage.bind(this);
+
+	// Fork addition (closed-groups support) — see NOTICE.
+	/**
+	 * Sends a visible chat message to a legacy closed group. Sealed to the
+	 * group's latest encryption key, wrapped in a CLOSED_GROUP_MESSAGE envelope
+	 * (source = group address) and stored to the group's swarm (namespace −10).
+	 * @param to — group public key (05-prefixed, 66 chars)
+	 * @param encryptionPublicKey — the group's latest encryption x25519 public key (unprefixed 64-char hex)
+	 * @param text — message body
+	 * @returns `Promise<{ messageHash, timestamp }>`
+	 */
+	public sendGroupMessage = sendGroupMessage.bind(this);
+
+	/**
+	 * Sends a legacy closed-group control message (NEW / NAME_CHANGE /
+	 * MEMBERS_ADDED / MEMBERS_REMOVED / MEMBER_LEFT / ENCRYPTION_KEY_PAIR).
+	 * Provide `encryptionPublicKey` to send to the group swarm (namespace −10,
+	 * sealed to the group encryption key); omit it to send a 1:1 DM to a member
+	 * (namespace 0, sealed to the member's identity key) — used for NEW invites
+	 * and ENCRYPTION_KEY_PAIR replies.
+	 * @param to — group address (group mode) or member public key (DM mode)
+	 * @returns `Promise<{ messageHash, timestamp }>`
+	 */
+	public sendClosedGroupUpdate = sendClosedGroupUpdate.bind(this);
 
 	/**
 	 * Convert unblinded (prefix 05) Session ID to blinded Session ID (prefix 15)

@@ -9,6 +9,7 @@ import type {
 	MessageRequestResponse,
 	CallMessage,
 	ClosedGroupUpdate,
+	ClosedGroupConfig,
 	ReactionMessage,
 	SyncMessage,
 } from "../messages";
@@ -27,6 +28,8 @@ export type EventCallbackSignatures = {
 	call: (call: CallMessage) => void;
 	/** A legacy closed-group control message (NEW / NAME_CHANGE / MEMBERS_* / MEMBER_LEFT / ENCRYPTION_KEY_PAIR). */
 	groupUpdate: (update: ClosedGroupUpdate) => void;
+	/** Closed groups carried in a legacy multi-device ConfigurationMessage sync. */
+	syncClosedGroups: (groups: ClosedGroupConfig[]) => void;
 	reactionAdded: (reaction: ReactionMessage) => void;
 	reactionRemoved: (reaction: ReactionMessage) => void;
 };
