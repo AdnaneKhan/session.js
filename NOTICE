@@ -22,6 +22,25 @@ clients, with attribution and preserved copyright headers:
 
 Per-file porting provenance is recorded in calls/COPYING.provenance.
 
+Closed-group additions (this fork)
+----------------------------------
+The groups/ package (@session.js/groups, branch feat/closed-groups) adds
+legacy closed-group support (05-prefixed groups) and is licensed
+AGPL-3.0-or-later. It will contain code ported — as direct ports, not a
+clean-room reimplementation — from the same Session Foundation clients:
+
+  - session-desktop (AGPLv3) — group lifecycle, inbound control dispatch,
+    group decryption, polling model
+  - session-android (GPLv3)  — group update handling, formation, polling
+
+Per-file provenance is recorded in groups/COPYING.provenance (filled in as
+porting lands); the plan and verified protocol facts live in
+docs/closed-groups/IMPLEMENTATION.md. The core-client patches it relies on
+(GroupPoller, group send methods, crypto exports, ClosedGroupControlMessage
+schema/mapper) are written fresh from the published proto facts,
+Copyright (c) 2026 AdnaneKhan, and remain MIT-licensable for upstream
+contribution.
+
 The combined work (forked client plus calls/ package) is distributed under
 the terms of the GNU Affero General Public License version 3 (AGPLv3);
 GPLv3 Android code combines into an AGPLv3 work per AGPLv3 §13.

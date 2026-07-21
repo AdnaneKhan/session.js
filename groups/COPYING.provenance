@@ -1,0 +1,38 @@
+COPYING.provenance — per-file porting provenance for @session.js/groups
+========================================================================
+
+Status: P0 SCAFFOLD — no ported files yet. This record is filled in
+per-file as implementation phases P3–P7 land, in the same format as
+calls/COPYING.provenance.
+
+License decision: everything shipped in this package is licensed
+AGPL-3.0-or-later. Official Session clients are GPLv3 (session-android)
+and AGPLv3 (session-desktop); GPLv3 code combines into an AGPLv3 work per
+AGPLv3 §13. All upstream copyright notices will be preserved in the
+headers of ported files, and changes annotated ("modified"), as GPL
+requires. © of ported portions: Session Foundation.
+
+Reference commits (docs/closed-groups/reference-pins.md):
+  session-desktop  master   @ d86076b443bba73510c0f6b6124f5dbc59deb05c
+  session-android  v1.19.1  @ e5ee2e1e1a72fd0b7229ff7385c52c3abb7b6d04
+
+PORTED FILES
+------------
+(none yet)
+
+Expected porting surface (IMPLEMENTATION.md §5):
+  src/group-manager.ts     — lifecycle adapted from session-desktop
+                             ts/session/group/closed-group.ts (AGPLv3) and
+                             session-android .../messaging/groups/ClosedGroup.kt (GPLv3)
+  src/handlers.ts          — inbound control dispatch adapted from
+                             ts/receiver/closedGroups.ts (AGPLv3) and
+                             .../sending_receiving/ReceivedMessageHandler.kt (GPLv3)
+  src/keypairs.ts          — keypair registry/rotation from the same sources
+  src/polling.ts           — group polling model from ts/session/apis/
+                             snode_api/swarmPolling.ts (AGPLv3) /
+                             .../jobs/ClosedGroupPollerV2.kt (GPLv3)
+
+FRESH-WRITTEN FILES
+-------------------
+  src/types.ts, src/index.ts, test/** — planned fresh (normative API
+  surface, tests). SPDX: AGPL-3.0-or-later.

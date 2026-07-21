@@ -1,0 +1,43 @@
+{
+	"name": "@session.js/groups",
+	"version": "0.0.1",
+	"description": "Legacy closed groups (05-prefixed) for the patched session.js client — group lifecycle, keypair rotation, group messaging. AGPL-3.0-or-later.",
+	"homepage": "https://github.com/AdnaneKhan/session.js",
+	"bugs": {
+		"url": "https://github.com/AdnaneKhan/session.js/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/AdnaneKhan/session.js.git"
+	},
+	"license": "AGPL-3.0-or-later",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE",
+		"COPYING.provenance"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "rm -rf dist && tsc",
+		"test": "bun test"
+	},
+	"peerDependencies": {
+		"@session.js/client": ">=0.0.57-calls.1"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"typescript": "^5.0.0"
+	}
+}

@@ -363,6 +363,43 @@ resolve each by updating this section and recording the finding in
 
 ---
 
+# Part II — Closed groups (legacy, 05-prefixed)
+
+> Closed-groups work is tracked separately from the voice-call phases
+> (`G`-series evidence IDs, branch `feat/closed-groups`). The normative
+> specification lives in
+> [`docs/closed-groups/IMPLEMENTATION.md`](./closed-groups/IMPLEMENTATION.md)
+> §2 (verified wire schema, formation, group messaging/polling, membership
+> lifecycle, keypair rotation, multi-device, limits). Reference pins:
+> [`docs/closed-groups/reference-pins.md`](./closed-groups/reference-pins.md).
+
+Quick orientation for implementers:
+
+- Control messages ride `DataMessage.closedGroupControlMessage` (field
+  **104**); types NEW=1, (2 = removed UPDATE, numbering gap), 
+  ENCRYPTION_KEY_PAIR=3, NAME_CHANGE=4, MEMBERS_ADDED=5, MEMBERS_REMOVED=6,
+  MEMBER_LEFT=7, ENCRYPTION_KEY_PAIR_REQUEST=8 (unused; ignore). Schema is
+  already compiled into `@session.js/types` — verified against the pinned
+  canonical proto (see `docs/evidence/G0-T1.md`).
+- Group traffic: `Envelope.type = CLOSED_GROUP_MESSAGE (7)`,
+  `source = groupPubKey`, sealed to the latest group x25519 encryption key,
+  stored to the group pubkey's swarm at **namespace −10** (unauthenticated
+  retrieve — `NetworkNode.buildRetrieveRequest` already implements it).
+  Chat messages carry `GroupContext{ id: utf8("05…hex"), type: DELIVER }`.
+- Group addresses: ed25519 → x25519-converted pubkey, `05`-prefixed;
+  encryption keypairs are unprefixed x25519, kept append-only (all
+  historical pairs retained; decrypt newest-first).
+- Member removal is admin-only and rotation happens on the removing admin's
+  side only; revocation is weak by design (removed members keep old keys) —
+  disclose in user docs. Group v2/v3 (`03…`, namespaces 11–14) is out of
+  scope for v1.
+
+Discrepancies discovered during implementation must be corrected in
+`docs/closed-groups/IMPLEMENTATION.md` *and* recorded under `G`-series
+evidence, per the living-document rule at the top of this file.
+
+---
+
 ## Glossary (plan Appendix F)
 
 - **PRE_OFFER**: Session-specific wake/ring message sent before the SDP offer.
