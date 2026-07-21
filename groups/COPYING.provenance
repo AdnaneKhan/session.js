@@ -18,21 +18,36 @@ Reference commits (docs/closed-groups/reference-pins.md):
 
 PORTED FILES
 ------------
-(none yet)
+src/keypairs.ts
+  Ported from session-desktop `ts/receiver/closedGroups.ts`
+  (master @ d86076b, AGPLv3): `getAllCachedECKeyPair`,
+  `addKeyPairToCacheAndDBIfNeeded`, `removeAllClosedGroupEncryptionKeyPairs`
+  (Kotlin analog: session-android `GroupUtil`/`ClosedGroup` keypair storage,
+  GPLv3), © Session Foundation, modified (TypeScript; backed by GroupStorage
+  instead of the desktop Data layer; unprefixed-hex keypairs; append/dedupe-
+  by-value/latest semantics per IMPLEMENTATION.md §2.5). Licensed under
+  AGPL-3.0-or-later.
 
-Expected porting surface (IMPLEMENTATION.md §5):
-  src/group-manager.ts     — lifecycle adapted from session-desktop
-                             ts/session/group/closed-group.ts (AGPLv3) and
-                             session-android .../messaging/groups/ClosedGroup.kt (GPLv3)
+src/group-manager.ts
+  Group lifecycle wiring adapted from session-desktop
+  `ts/session/group/closed-group.ts` (master @ d86076b, AGPLv3) and
+  session-android `.../messaging/groups/ClosedGroup.kt` (v1.19.1, GPLv3),
+  © Session Foundation, modified (restructured onto a structural
+  GroupSessionLike + GroupStorage + KeypairRegistry, following the
+  @session.js/calls CallManager/CallSupervisor composition; P3 skeleton —
+  lifecycle bodies filled in by P4–P7). Licensed under AGPL-3.0-or-later.
+
+Expected remaining porting surface (IMPLEMENTATION.md §5, filled in P4–P7):
   src/handlers.ts          — inbound control dispatch adapted from
                              ts/receiver/closedGroups.ts (AGPLv3) and
                              .../sending_receiving/ReceivedMessageHandler.kt (GPLv3)
-  src/keypairs.ts          — keypair registry/rotation from the same sources
-  src/polling.ts           — group polling model from ts/session/apis/
-                             snode_api/swarmPolling.ts (AGPLv3) /
-                             .../jobs/ClosedGroupPollerV2.kt (GPLv3)
 
 FRESH-WRITTEN FILES
 -------------------
-  src/types.ts, src/index.ts, test/** — planned fresh (normative API
-  surface, tests). SPDX: AGPL-3.0-or-later.
+  src/types.ts        — written fresh (structural GroupSessionLike + event/state
+                        types; normative API surface). SPDX: AGPL-3.0-or-later.
+  src/errors.ts       — written fresh (error taxonomy). SPDX: AGPL-3.0-or-later.
+  src/storage.ts      — written fresh (closed_group:{id}:* storage schema +
+                        InMemoryGroupStorage). SPDX: AGPL-3.0-or-later.
+  src/index.ts        — written fresh (barrel). SPDX: AGPL-3.0-or-later.
+  test/**             — written fresh. SPDX: AGPL-3.0-or-later.
