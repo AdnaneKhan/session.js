@@ -1,5 +1,6 @@
 import { SignalService } from "@session.js/types/signal-bindings";
 import type { EnvelopePlus } from "@session.js/types/envelope";
+import { bytesToHex } from "@noble/ciphers/utils.js";
 import { deserializeProfile, type Profile } from "@/profile";
 import { getPlaceholderDisplayName } from "@/utils";
 
@@ -299,6 +300,68 @@ export function mapCallMessage({ content, envelope }: Content): CallMessage {
 		sdps: [...(c.sdps ?? [])],
 		sdpMLineIndexes: [...(c.sdpMLineIndexes ?? [])],
 		sdpMids: [...(c.sdpMids ?? [])],
+	};
+}
+
+// Fork addition (closed-groups support): ClosedGroupUpdate type +
+// mapClosedGroupControlMessage mapper. Written fresh from the published
+// SessionProtos.proto field facts — SPDX-License-Identifier: MIT,
+// (c) 2026 AdnaneKhan, upstreamable.
+export type ClosedGroupUpdate = {
+	type: SignalService.DataMessage.ClosedGroupControlMessage.Type;
+	/** Group public key (05…hex). From the explicit `publicKey` field when present (NEW invites / keypair replies), else the group-swarm envelope `source`. */
+	groupId: string;
+	/** The actual author (05…hex). `senderIdentity` for group-swarm messages, envelope `source` for 1:1 DMs. */
+	from: string;
+	/** True when this arrived as a CLOSED_GROUP_MESSAGE envelope (group swarm, ns −10); false for a 1:1 DM (NEW invite / keypair reply, ns 0). */
+	isGroupMessage: boolean;
+	/** Envelope timestamp in milliseconds. */
+	timestamp: number;
+	/** Explicit group public key (05…hex) — NEW and ENCRYPTION_KEY_PAIR replies only. */
+	publicKey?: string;
+	/** Group display name — NEW and NAME_CHANGE. */
+	name?: string;
+	/** Plaintext group encryption keypair — NEW only (travels inside the sealed box). */
+	encryptionKeyPair?: { publicKey: Uint8Array; privateKey: Uint8Array };
+	/** Member public keys (05…hex) — NEW / MEMBERS_ADDED / MEMBERS_REMOVED. */
+	members: string[];
+	/** Admin public keys (05…hex) — NEW. */
+	admins: string[];
+	/** Per-member wrapped keypairs — ENCRYPTION_KEY_PAIR. `publicKey` is 05…hex; `encryptedKeyPair` is the sealed, unpadded KeyPair-proto bytes. */
+	wrappers: Array<{ publicKey: string; encryptedKeyPair: Uint8Array }>;
+	/** Disappearing-message timer in seconds (deleteAfterSend) — NEW. */
+	expirationTimer?: number;
+};
+export function mapClosedGroupControlMessage({ content, envelope }: Content): ClosedGroupUpdate {
+	const c = content.dataMessage!.closedGroupControlMessage!;
+	const isGroupMessage = envelope.type === SignalService.Envelope.Type.CLOSED_GROUP_MESSAGE;
+	let timestamp = envelope.timestamp;
+	if (typeof timestamp !== "number") {
+		timestamp = timestamp.toNumber();
+	}
+	const explicitGroupKey = c.publicKey?.length ? bytesToHex(c.publicKey) : undefined;
+	return {
+		type: c.type,
+		groupId: explicitGroupKey ?? envelope.source,
+		from: isGroupMessage ? envelope.senderIdentity : envelope.source,
+		isGroupMessage,
+		timestamp,
+		...(explicitGroupKey && { publicKey: explicitGroupKey }),
+		...(c.name !== undefined && c.name !== null && { name: c.name }),
+		...(c.encryptionKeyPair && {
+			encryptionKeyPair: {
+				publicKey: new Uint8Array(c.encryptionKeyPair.publicKey),
+				privateKey: new Uint8Array(c.encryptionKeyPair.privateKey),
+			},
+		}),
+		members: (c.members ?? []).map((m) => bytesToHex(m)),
+		admins: (c.admins ?? []).map((a) => bytesToHex(a)),
+		wrappers: (c.wrappers ?? []).map((w) => ({
+			publicKey: bytesToHex(w.publicKey),
+			encryptedKeyPair: new Uint8Array(w.encryptedKeyPair),
+		})),
+		...(c.expirationTimer !== undefined &&
+			c.expirationTimer !== null && { expirationTimer: c.expirationTimer }),
 	};
 }
 

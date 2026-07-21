@@ -57,3 +57,57 @@ Goldens are regenerated ONLY via human-reviewed change (plan Appendix D).
 Tests compare live encoding output against these committed hex files;
 `scripts/verify-fixtures.ts` decodes them, asserts field values, and asserts a
 byte-perfect re-encode roundtrip.
+
+---
+
+# Wire golden fixtures — Closed groups (`groups/`)
+
+Golden byte vectors for the legacy closed-group control messages and the group
+chat (visible) message, used by `test/group-mapper.test.ts` (closed-groups plan
+§4 P1, evidence `G1-T2`). Each `groups/*.hex` is:
+
+```
+hex( SignalService.Content.encode(new SignalService.Content({ dataMessage })).finish() )
+```
+
+Control messages carry **only** `DataMessage.closedGroupControlMessage` (field
+104) — no `GroupContext` (verified against the pinned session-desktop outgoing
+shapes, `docs/closed-groups/reference-pins.md`). The group chat message carries a
+`GroupContext` (field 3) whose `id` is the **UTF-8 of the 05-prefixed hex
+string** (66 bytes), `type = DELIVER`.
+
+## Fixtures
+
+| File | Message | Provenance |
+|---|---|---|
+| `groups/new.hex` | `NEW` (type 1): publicKey, name, members, admins, expirationTimer=3600, encryptionKeyPair | computed |
+| `groups/name-change.hex` | `NAME_CHANGE` (type 4): name | computed |
+| `groups/members-added.hex` | `MEMBERS_ADDED` (type 5): members | computed |
+| `groups/members-removed.hex` | `MEMBERS_REMOVED` (type 6): members | computed |
+| `groups/member-left.hex` | `MEMBER_LEFT` (type 7): no extra fields | computed |
+| `groups/encryption-key-pair.hex` | `ENCRYPTION_KEY_PAIR` (type 3): 2 wrappers | computed |
+| `groups/visible.hex` | group chat message: body + `GroupContext{id:utf8("05…"), type:DELIVER}` | computed |
+
+`ENCRYPTION_KEY_PAIR_REQUEST` (type 8) is unused by the official clients and is
+deliberately not generated.
+
+## Canonical input values (verbatim)
+
+```
+GROUP_PUBKEY    = 05 + "11"*32        (05-prefixed 33-byte group address)
+GROUP_MEMBER_A  = 05 + "aa"*32
+GROUP_MEMBER_B  = 05 + "bb"*32
+GROUP_MEMBER_C  = 05 + "cc"*32
+GROUP_NAME      = Test Group
+GROUP_ENC_PUB   = "22"*32             (unprefixed 32-byte x25519 encryption pubkey)
+GROUP_ENC_PRIV  = "33"*32             (unprefixed 32-byte x25519 encryption privkey)
+GROUP_WRAPPER_CIPHERTEXT = "44"*80    (stand-in sealed KeyPair-proto blob)
+GROUP_BODY      = hello group
+GROUP_TIMESTAMP = 1751000000000
+```
+
+The `new` fixture uses `members = [A, B, C]`, `admins = [A]`. The
+`encryption-key-pair` fixture wraps to `[B, C]` with the same ciphertext
+stand-in. Regenerate with `bun scripts/generate-goldens.ts`; verify with
+`bun scripts/verify-fixtures.ts` (both now cover the call and group fixtures).
+

@@ -14,6 +14,7 @@ import {
 	mapMediaSavedMessage,
 	mapMessageRequestResponseMessage,
 	mapCallMessage,
+	mapClosedGroupControlMessage,
 	type SyncMessage,
 } from "@/messages";
 import lodash from "lodash";
@@ -53,8 +54,20 @@ export function addPoller(this: Session, poller: Poller) {
 				}
 			}
 
+			// Fork addition (closed-groups support): dispatch legacy closed-group
+			// control messages (NEW / NAME_CHANGE / MEMBERS_* / MEMBER_LEFT /
+			// ENCRYPTION_KEY_PAIR) as `groupUpdate`. They ride inside dataMessage
+			// but are not visible messages, so they are excluded from the `message`
+			// chain below. Written fresh — SPDX-License-Identifier: MIT,
+			// (c) 2026 AdnaneKhan, upstreamable.
+			newMessages
+				.filter((m) => m.content.dataMessage?.closedGroupControlMessage)
+				.map((m) => mapClosedGroupControlMessage(m))
+				.forEach((m) => this._emit("groupUpdate", m));
+
 			newMessages
 				.filter((m) => m.content.dataMessage)
+				.filter((m) => !m.content.dataMessage?.closedGroupControlMessage)
 				.filter((m) => !m.content.dataMessage?.syncTarget)
 				.filter((m) => !m.content.dataMessage?.reaction)
 				.map((m) => mapDataMessage(m))

@@ -8,6 +8,7 @@ import type {
 	ScreenshotTakenNotification,
 	MessageRequestResponse,
 	CallMessage,
+	ClosedGroupUpdate,
 	ReactionMessage,
 	SyncMessage,
 } from "../messages";
@@ -24,6 +25,8 @@ export type EventCallbackSignatures = {
 	mediaSaved: (notification: MediaSavedNotification) => void;
 	messageRequestApproved: (message: MessageRequestResponse) => void;
 	call: (call: CallMessage) => void;
+	/** A legacy closed-group control message (NEW / NAME_CHANGE / MEMBERS_* / MEMBER_LEFT / ENCRYPTION_KEY_PAIR). */
+	groupUpdate: (update: ClosedGroupUpdate) => void;
 	reactionAdded: (reaction: ReactionMessage) => void;
 	reactionRemoved: (reaction: ReactionMessage) => void;
 };

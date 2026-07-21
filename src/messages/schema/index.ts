@@ -1,4 +1,10 @@
 export { CallMessage } from "./call-message";
+export {
+	ClosedGroupControlMessage,
+	type ClosedGroupControlMessageParams,
+	type KeyPairWrapperParams,
+	type GroupEncryptionKeyPairParams,
+} from "./closed-group-control-message";
 export { VisibleMessage } from "./visible-message";
 export { ConfigurationMessage } from "./configuration-message";
 export { MessageRequestResponse } from "./conversation-request-message";
