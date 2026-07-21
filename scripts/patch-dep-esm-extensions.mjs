@@ -1,14 +1,21 @@
 #!/usr/bin/env node
-// Workaround for an upstream packaging bug in the @session.js/* dependency
-// packages: their published dist files use extensionless relative ESM
-// specifiers (e.g. `from "./compiled"`), which Bun's resolver tolerates but
-// Node's strict ESM resolver rejects with ERR_MODULE_NOT_FOUND. This script
-// rewrites those specifiers to add the `.js` extension so the built client
-// imports under plain Node (used by the node-22 CI lane's import check).
+// Workaround for upstream packaging bugs in the @session.js/* dependency
+// packages, whose published dist files do not import cleanly under Node's
+// strict ESM resolver (Bun tolerates all three):
 //
-// No-op for specifiers that already carry an extension. Patches
-// node_modules only — the real fix belongs upstream in the @session.js/*
-// packages (adding extensions at build time).
+//  1. Extensionless relative specifiers (e.g. `from "./compiled"`) —
+//     Node throws ERR_MODULE_NOT_FOUND; rewrite to add `.js`.
+//  2. Bare subpaths of packages without an "exports" map
+//     (`from "protobufjs/minimal"`) — same; rewrite to the explicit file.
+//  3. Named imports from the CJS `lodash` bundle (`import { isNil } from
+//     "lodash"`) — Node's cjs-module-lexer cannot statically detect
+//     lodash's exports on the runner's Node 22; rewrite to a default
+//     import plus destructuring.
+//
+// Idempotent; no-op for specifiers/imports already in the safe form
+// (Bun sometimes rewrites these at install time — results converge either
+// way). Patches node_modules only — the real fix belongs upstream in the
+// @session.js/* packages. Used by the node-22 CI lane's import check.
 
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -33,6 +40,7 @@ const BARE_SUBPATH_REWRITES = {
 	"protobufjs/minimal": "protobufjs/minimal.js",
 };
 const BARE = /(from\s*)(["'])([a-z@][^"']*)\2/g;
+const LODASH_NAMED = /import\s*\{([^}]+)\}\s*from\s*(["'])lodash\2\s*;?/g;
 let patchedFiles = 0;
 let patchedSpecifiers = 0;
 for (const file of walk(root)) {
@@ -47,6 +55,19 @@ for (const file of walk(root)) {
 		if (!fixed) return match;
 		patchedSpecifiers++;
 		return `${kw}${quote}${fixed}${quote}`;
+	});
+	// Named CJS imports of lodash: default-import once per file, then
+	// destructure (`as` aliases become `:` renames in the pattern).
+	let lodashDefaultAdded = false;
+	out = out.replace(LODASH_NAMED, (_match, names, quote) => {
+		patchedSpecifiers++;
+		const pattern = names.trim().replace(/\s+as\s+/g, ": ");
+		const destructure = `const { ${pattern} } = __lodash_default;`;
+		if (!lodashDefaultAdded) {
+			lodashDefaultAdded = true;
+			return `import __lodash_default from ${quote}lodash${quote};\n${destructure}`;
+		}
+		return destructure;
 	});
 	if (out !== src) {
 		writeFileSync(file, out);
