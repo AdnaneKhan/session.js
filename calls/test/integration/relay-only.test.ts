@@ -4,13 +4,18 @@
 // shipped in every official client). Two in-process PeerConnectionManager
 // sessions, no Session network.
 //
-// NOT env-gated — but environmentally robust: the getsession.org TURN path
-// from this dev environment is slow/occasionally degraded (P3-T2 measured
-// ~520 ms double-hop RTT). The test SOFT-SKIPS at runtime (warn + early
-// return, suite stays green) when the relay path cannot be established
-// within budget or the TURN leg carries no audio — never a hard failure
-// over the environment. Bun has no async pre-registration probe for UDP
-// reachability, hence runtime soft-skip. Documented choice.
+// GATED: only runs with SESSION_CALLS_NETWORK_TESTS=1. Needs UDP egress to
+// the getsession.org TURN hosts, which CI sandboxes block or throttle hard
+// enough that the runtime soft-skip budgets can be outrun by the 120 s test
+// timeout (observed on GitHub-hosted runners). Gate it like the other
+// networked integration tests; the nightly networked lane exercises it.
+//
+//   SESSION_CALLS_NETWORK_TESTS=1 bun test test/integration/relay-only.test.ts
+//
+// When gated in, it additionally SOFT-SKIPS at runtime (warn + early
+// return, suite stays green) if the relay path is degraded — no relay
+// connection, no DTLS, or no audio within budget — never a hard failure
+// over the environment.
 //
 // Readiness note (P4-T2 finding): ICE-level "connected" is NOT enough —
 // RTP written before DTLS completion is silently dropped by werift. The
@@ -27,6 +32,8 @@ import {
 	type MediaConnectionState,
 } from "../../src/media/peer-connection.js";
 import { defaultIceServers } from "../../src/policy.js";
+
+const RUN = process.env.SESSION_CALLS_NETWORK_TESTS === "1";
 
 const RELAY_CONNECT_BUDGET_MS = 25_000;
 const DTLS_BUDGET_MS = 20_000;
@@ -51,7 +58,7 @@ async function waitDataChannelOpen(s: WeriftMediaSession, budgetMs: number): Pro
 	return true;
 }
 
-test("relay-only: connect via official TURN + 1 s audio both directions", async () => {
+(!RUN ? test.skip : test)("relay-only: connect via official TURN + 1 s audio both directions", async () => {
 	const manager = new PeerConnectionManager();
 	const iceServers = defaultIceServers(); // shuffle-take-2 of the 5 official hosts
 	console.log(

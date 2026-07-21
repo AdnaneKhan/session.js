@@ -12,6 +12,9 @@
 		// Bundler mode
 		"moduleResolution": "bundler",
 		"verbatimModuleSyntax": true,
+		// Default-import CJS packages (lodash) — Node's ESM interop hands us
+		// module.exports as `default`; named imports from CJS are unreliable.
+		"esModuleInterop": true,
 
 		// Best practices
 		"strict": true,

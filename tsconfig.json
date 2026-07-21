@@ -12,6 +12,9 @@
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": true,
+		// Default-import CJS packages (lodash) — Node's ESM interop hands us
+		// module.exports as `default`; named imports from CJS are unreliable.
+		"esModuleInterop": true,
 		"noEmit": true,
 
 		// Best practices

@@ -8,9 +8,10 @@
 # test/sending-and-polling.test.ts requires a live swarm + configured test
 # account — it is filtered out of the client lane (documented).
 #
-# Note: networked integration tests in calls/ are gated behind
-# SESSION_CALLS_NETWORK_TESTS=1 (not set here); the relay-only media test
-# soft-skips on environmental degradation and never fails the suite.
+# Note: ALL networked tests in calls/ (lifecycle, paths, relay-only media)
+# are gated behind SESSION_CALLS_NETWORK_TESTS=1 (not set here) and run in
+# nightly.yml's continue-on-error networked lane; offline CI never touches
+# the live swarm/TURN.
 
 name: ci
 
@@ -47,7 +48,13 @@ jobs:
         run: bun -e "const m = await import('./dist/index.js'); if (typeof m.Session !== 'function') throw new Error('no Session export'); console.log('bun import OK');"
       - name: runtime import check (node 22)
         if: matrix.runtime == 'node-22'
-        run: node -e "import('./dist/index.js').then(m => { if (typeof m.Session !== 'function') throw new Error('no Session export'); console.log('node import OK'); })"
+        run: |
+          # Upstream @session.js/* deps publish extensionless relative ESM
+          # specifiers (e.g. `from "./compiled"`) which Bun resolves but
+          # Node's strict ESM does not — patch node_modules only (real fix
+          # belongs upstream). See scripts/patch-dep-esm-extensions.mjs.
+          node scripts/patch-dep-esm-extensions.mjs
+          node -e "import('./dist/index.js').then(m => { if (typeof m.Session !== 'function') throw new Error('no Session export'); console.log('node import OK'); })"
 
   calls:
     runs-on: ubuntu-latest

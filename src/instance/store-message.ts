@@ -5,7 +5,8 @@ import type { EncryptAndWrapMessageResults } from "@/crypto/message-encrypt";
 import type { ResponseStore } from "@session.js/types/network/response";
 import { SessionFetchError, SessionFetchErrorCode } from "@session.js/errors";
 import { RequestType, type RequestStoreBody } from "@session.js/types/network/request";
-import { sample } from "lodash";
+import lodash from "lodash";
+const { sample } = lodash;
 
 export async function _storeMessage(
 	this: Session,

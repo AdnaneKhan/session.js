@@ -8,7 +8,8 @@ import {
 } from "@session.js/errors";
 import type { ResponseGetSwarms } from "@session.js/types/network/response";
 import { RequestType, type RequestGetSwarmsBody } from "@session.js/types/network/request";
-import { sample } from "lodash";
+import lodash from "lodash";
+const { sample } = lodash;
 
 export async function getSwarmsFor(this: Session, sessionID: string) {
 	const snodes = await this.getSnodes();

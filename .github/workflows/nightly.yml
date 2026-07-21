@@ -37,6 +37,12 @@ jobs:
       - name: Tier-2 fault & stress
         run: cd calls && bun e2e/run-tier2.ts
 
+      - name: Relay-only media via official TURN (live UDP)
+        continue-on-error: true
+        env:
+          SESSION_CALLS_NETWORK_TESTS: "1"
+        run: cd calls && bun test test/integration/relay-only.test.ts
+
       - name: Networked lifecycle (live swarm; secrets optional)
         continue-on-error: true
         env:

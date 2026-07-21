@@ -15,7 +15,8 @@ import { wrap } from "@/crypto/message-encrypt";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex } from "@noble/ciphers/utils.js";
 import { base64 } from "@scure/base";
-import { sample } from "lodash";
+import lodash from "lodash";
+const { sample } = lodash;
 
 export async function deleteMessage(
 	this: Session,

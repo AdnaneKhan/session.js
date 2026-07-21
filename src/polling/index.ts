@@ -17,7 +17,8 @@ import type { KeyPair, SessionKeys } from "@session.js/keypair";
 import { decodeMessage, decryptMessage, extractContent } from "@/crypto/message-decrypt";
 import { getSnodeSignatureParams } from "@/crypto/signature";
 import type { Session } from "@/instance";
-import { compact, flatten, last, uniqBy } from "lodash";
+import lodash from "lodash";
+const { compact, flatten, last, uniqBy } = lodash;
 
 // SnodeNamespaces.ClosedGroupMessage is legacy
 const allNamespaces = new Set([

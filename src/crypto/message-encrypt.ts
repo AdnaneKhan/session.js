@@ -1,7 +1,8 @@
 import { SignalService } from "@session.js/types/signal-bindings";
 import { addMessagePadding } from "./message-padding";
 import { removePrefixIfNeeded } from "../utils";
-import { isNil, toNumber } from "lodash";
+import lodash from "lodash";
+const { isNil, toNumber } = lodash;
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { concatBytes, hexToBytes } from "@noble/ciphers/utils.js";
 import { base64 } from "@scure/base";
