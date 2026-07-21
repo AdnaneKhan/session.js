@@ -7,9 +7,6 @@ Session.js allows you to create:
 - Custom Session clients (web-based and native with JS backend)
 - Automation tools for Session
 
-> [!IMPORTANT]
-> I'm looking for a job! Interested in hiring me? Visit [cv.hloth.dev](https://cv.hloth.dev) to review my resume & CV.
-
 ## Features
 
 - On-demand polling — you decide when to get new messages and whether instance should poll them (and poll settings like frequency) or work just for sending
@@ -57,16 +54,40 @@ Additions, all covered by tests:
 
 Visit documentation website for guide: [https://sessionjs.github.io/docs/](https://sessionjs.github.io/docs/)
 
-## Acknowledgements
+## Credits
+
+This fork is maintained by [AdnaneKhan](https://github.com/AdnaneKhan) and
+builds on [Session.js](https://git.hloth.dev/session.js/client) by
+[Viktor Shchelochkov (hloth.dev)](https://hloth.dev) — an excellent library
+for programmatic Session usage. All credit for the original client, its
+documentation and roadmap belongs to the upstream author; the voice-call
+additions and the AGPL `calls/` package in this fork are by the fork
+maintainer.
 
 - Noble PRs by [li0ard](https://li0ard.rest)
 
-## Donate
-
-[hloth.dev/donate](https://hloth.dev/donate) · Tor: [hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate](http://hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate)
-
-PGP-signed list of my crypto wallets: [hloth.dev/donate-pgp-signed.txt](https://hloth.dev/donate-pgp-signed.txt) · Tor: [hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate-pgp-signed.txt](http://hlothdevzkti6suoksy7lcy7hmpxnr3msu5waokzaslsi2mnx5ouu4qd.onion/donate-pgp-signed.txt)
-
 ## License
 
-[MIT](./LICENSE)
+This repository is a fork of the MIT-licensed
+[Session.js client](https://git.hloth.dev/session.js/client)
+(© Viktor Shchelochkov) with an added voice-call package. The
+**combined work is distributed under AGPL-3.0-or-later**. Full
+details: [`NOTICE`](./NOTICE).
+
+| If you… | License that applies | What that means |
+|---|---|---|
+| Use `calls/`, or the client together with `calls/` | **AGPL-3.0-or-later** | Copyleft. Running it as a network service (incl. an agent fleet others interact with over Session) triggers **AGPL §13**: you must give users of the service the complete corresponding source, including your modifications. |
+| Use only the client core (everything outside `calls/`) | **MIT** | Permissive — see [`LICENSES/MIT.txt`](./LICENSES/MIT.txt). The fresh call-signaling patches listed below are also MIT. |
+| Redistribute or fork | Both | Preserve the copyright notices, `LICENSE`, `LICENSES/MIT.txt`, `NOTICE`, and `calls/COPYING.provenance`; annotate your changes to ported files. |
+
+The call-signaling patches to the client core (`mapCallMessage` mapper
+fix, `CallMessage` schema, `sendCallMessage`, `setPollInterval`,
+`NetworkNode`) were written fresh from the published
+`SessionProtos.proto` field facts and are MIT-licensable for upstream
+contribution.
+
+The `calls/` package is **not clean-room**: it contains code directly
+ported from the Session Foundation's session-android (GPLv3) and
+session-desktop (AGPLv3) clients, with upstream headers preserved and
+per-file provenance in
+[`calls/COPYING.provenance`](./calls/COPYING.provenance).

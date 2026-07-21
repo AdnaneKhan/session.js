@@ -1,4 +1,8 @@
-// Written fresh from the published SessionProtos.proto field facts. MIT-licensable for upstream contribution.
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 AdnaneKhan
+// Written fresh from the published SessionProtos.proto field facts —
+// no code copied from GPL/AGPL sources. MIT-licensable for upstream
+// contribution to @session.js/client.
 import { wrap } from "@/crypto/message-encrypt";
 import type { Session } from "@/instance";
 import { CallMessage } from "@/messages/schema/call-message";

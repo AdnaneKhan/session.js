@@ -11,8 +11,9 @@ Voice-call additions (this fork)
 --------------------------------
 This fork adds Session-to-Session voice-call support. The added calls/
 package (introduced on the feat/voice-calls* branches) is licensed
-AGPL-3.0-or-later and contains code ported from Session Foundation's
-official clients, with attribution and preserved copyright headers:
+AGPL-3.0-or-later and contains code ported — as direct ports, not a
+clean-room reimplementation — from Session Foundation's official
+clients, with attribution and preserved copyright headers:
 
   - session-android (GPLv3)  — state machine, signaling processor, peer
     connection config, wire message model
@@ -29,9 +30,10 @@ Fresh-written core-client patches
 ---------------------------------
 The following patches to the core client are written fresh from the
 published SessionProtos.proto field facts (no lines copied from GPL/AGPL
-sources) and remain MIT-licensable for contribution upstream to MIT
-session.js: the mapCallMessage mapper fix, the CallMessage schema class,
-Session.prototype.sendCallMessage, setPollInterval, and NetworkNode.
+sources), Copyright (c) 2026 AdnaneKhan, and remain MIT-licensable for
+contribution upstream to MIT session.js: the mapCallMessage mapper fix,
+the CallMessage schema class, Session.prototype.sendCallMessage,
+setPollInterval, and NetworkNode.
 
 AGPL §13 — network-use obligation
 ---------------------------------
@@ -41,5 +43,16 @@ available to users of that service, under the terms of the AGPLv3.
 To satisfy this: these repositories are kept public, and releases are
 tagged and archived. Service operators embedding this library inherit the
 same obligation.
+
+License layout
+--------------
+The root LICENSE carries the AGPL-3.0-or-later text for the combined
+work; the MIT text for the core portions is preserved in
+LICENSES/MIT.txt.
+
+Packaging: the root @session.js/client package is not published to npm
+from this fork; consumers install it from source. The @session.js/calls
+package (calls/) is the npm-published artifact and ships its own AGPL
+LICENSE and COPYING.provenance.
 
 See also: docs/protocol-notes.md, docs/upstream-pin.md, docs/evidence/.

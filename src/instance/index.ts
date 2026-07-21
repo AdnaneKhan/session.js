@@ -146,6 +146,7 @@ export class Session {
 	/** Add Poller class instance to this Session instance to start polling new messages */
 	public addPoller = addPoller.bind(this);
 
+	// Fork addition (calls support) — see NOTICE.
 	/**
 	 * Advanced use. Sets polling interval on all registered pollers of this Session instance.
 	 * Useful to boost polling cadence during time-sensitive operations (e.g. voice call signaling)
@@ -169,6 +170,7 @@ export class Session {
 	 */
 	public sendMessage = sendMessage.bind(this);
 
+	// Fork addition (calls support) — see NOTICE.
 	/**
 	 * Sends a Session call signaling message (PRE_OFFER, OFFER, ANSWER, ICE_CANDIDATES, END_CALL)
 	 * to another Session ID. The message is stored in the recipient's swarm with a 5-minute TTL.

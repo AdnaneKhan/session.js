@@ -16,8 +16,11 @@ import {
 	mapCallMessage,
 	type SyncMessage,
 } from "@/messages";
-import { isEqual, sample } from "lodash";
+import lodash from "lodash";
+const { isEqual, sample } = lodash;
 
+// Fork addition (calls support): setPollInterval. Written fresh, MIT —
+// SPDX-License-Identifier: MIT, (c) 2026 AdnaneKhan, upstreamable.
 /**
  * Sets the polling interval on all Pollers registered with this Session instance.
  * Pollers that are already polling restart with the new interval; pollers with

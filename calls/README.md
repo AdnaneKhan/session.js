@@ -383,6 +383,12 @@ ports of session-desktop (AGPLv3) and session-android (GPLv3) call code,
 © Session Foundation, modified; upstream headers preserved, changes
 documented).
 
+**Provenance, plainly:** this package is **not a clean-room
+reimplementation**. It contains code **directly ported** from the Session
+Foundation's session-android (GPLv3) and session-desktop (AGPLv3) clients —
+upstream copyright headers are preserved, modifications are annotated, and
+every ported file is listed in [`COPYING.provenance`](COPYING.provenance).
+
 **AGPL §13 network-use obligation, plainly:** if you run this library as
 part of a network service (including an agent fleet others interact with
 over Session), you must make the **complete corresponding source** of this
@@ -390,6 +396,8 @@ package and your modifications available to the users of that service,
 under the same terms. Keep your forks public, tag releases, and state your
 source location in the service.
 
-The patched client fork keeps MIT for its original code; the three small
-call-signaling patches were written fresh from the published proto facts
-and remain MIT-licensable for upstream contribution.
+The patched client fork keeps MIT for its original code; the small
+call-signaling patches to the client core (`mapCallMessage` mapper fix,
+`CallMessage` schema, `sendCallMessage`, `setPollInterval`, `NetworkNode`)
+were written fresh from the published proto facts and remain MIT-licensable
+for upstream contribution.

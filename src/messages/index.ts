@@ -269,6 +269,9 @@ export function mapMessageRequestResponseMessage({
 	};
 }
 
+// Fork addition (calls support): CallMessage type + mapCallMessage mapper.
+// Written fresh from the published SessionProtos.proto field facts —
+// SPDX-License-Identifier: MIT, (c) 2026 AdnaneKhan, upstreamable.
 export type CallMessage = {
 	uuid: string;
 	type: SignalService.CallMessage.Type;

@@ -1,4 +1,8 @@
-// Written fresh from the published SessionProtos.proto field facts. MIT-licensable for upstream contribution.
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 AdnaneKhan
+// Written fresh from the published SessionProtos.proto field facts —
+// no code copied from GPL/AGPL sources. MIT-licensable for upstream
+// contribution to @session.js/client.
 /**
  * Network implementation for Node.js >= 18 runtimes (uses global fetch, no Bun APIs).
  *

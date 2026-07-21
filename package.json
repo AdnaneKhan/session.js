@@ -27,7 +27,8 @@
 		"dist/**/*.js",
 		"dist/**/*.d.ts",
 		"README.md",
-		"LICENSE"
+		"LICENSE",
+		"NOTICE"
 	],
 	"scripts": {
 		"build": "rm -rf dist && tsc --project tsconfig.publish.json && tsc-alias -p tsconfig.publish.json --resolve-full-paths"
