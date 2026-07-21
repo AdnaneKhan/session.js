@@ -59,10 +59,11 @@ nav:
       - storage/index.md
       - In-memory: storage/in-memory.md
       - File-based persistant: storage/file-keyval.md
-    - Network: 
+    - Network:
       - network/index.md
       - Bun local: network/bun-local.md
       - Bun remote: network/bun-remote.md
+      - Node.js (fork): network/node.md
     - Files and attachments: files-and-attachments.md
     - Reactions: reactions.md
     - Deleting messages: deleting-messages.md
@@ -75,6 +76,15 @@ nav:
     - SOGS: sogs.md
     - Error handling: error-handling.md
     - Constants: constants.md
+  - Voice calls:
+    - Overview: voice/index.md
+    - Setup & install: voice/setup.md
+    - Making calls: voice/making-calls.md
+    - Receiving calls: voice/receiving-calls.md
+    - Audio pipelines (STT/TTS): voice/audio-pipeline.md
+    - API reference: voice/api-reference.md
+    - Protocol & caveats: voice/protocol.md
+    - Examples: voice/examples.md
   - How Session Works:
     - Accounts in Session: principles/users.md
     - Messages in Session: principles/messages.md

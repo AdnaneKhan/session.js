@@ -1,5 +1,13 @@
 Session.js is JavaScript library for programmatic usage of [Session messenger by OXEN](https://getsession.org). Supports server and browser environment with built-in proxy network module. Shipped with TypeScript definitions. Tested with bun:test. It's aimed for [Bun](https://bun.sh) users — a modern runtime for JavaScript and alternative to Node.js. But it can also be used on most platforms and runtimes thanks to external modules system and platform-agnostic architecture with vanilla [noble](https://paulmillr.com/noble/) cryptography instead of WASM-compiled libsodium and bytebuffer.
 
+!!! Note "This is the fork's documentation"
+    This site is maintained with the
+    [AdnaneKhan/session.js](https://github.com/AdnaneKhan/session.js) fork,
+    which adds **headless 1:1 voice calls** ([`@session.js/calls`](./voice/index.md))
+    and **Node ≥ 22 support** ([`NetworkNode`](./network/node.md)) on top of
+    upstream Session.js. Upstream original:
+    [sessionjs.github.io/docs](https://sessionjs.github.io/docs).
+
 Session.js allows you to create:
 
 - Highly optimized Session bots (hundreds of bots in a single app)
@@ -42,12 +50,13 @@ Jump to [getting started](./getting-started.md) page to start using Session.js!
       - [X] Screenshot / media saved (DataExtraction)
       - [X] Delete message (Unsend)
       - [X] Call message
-        - Just event to display placeholder warning about unsupported feature
+        - Upstream: event with placeholder fields only
+        - **This fork:** full `CallMessage` mapping (SDP/ICE fields) + `sendCallMessage()`
   - [X] Reactions
   - [ ] Closed chats
   - [ ] Open groups (SOGS)
   - [ ] Expirable messages
-- [ ] Calls
+- [X] Calls — **this fork**: headless 1:1 voice calls over WebRTC/Opus, see [Voice calls](./voice/index.md)
 - [ ] Messages editing (SOGS)
 - [X] Profile editing
   - [X] Display name
@@ -59,8 +68,12 @@ Jump to [getting started](./getting-started.md) page to start using Session.js!
 
 ## License
 
-All code in Session.js (including any submodules) was written by Viktor Shchelochkov aka hloth and licensed under [MIT license](https://git.hloth.dev/session.js/client/blob/main/LICENSE.md)
-
-## Funding
-
-You can donate here: [hloth.dev/donate](https://hloth.dev/donate)
+The original Session.js client was written by Viktor Shchelochkov aka hloth
+and is licensed under the [MIT license](https://git.hloth.dev/session.js/client/blob/main/LICENSE.md);
+those portions remain MIT in this fork (see
+[`LICENSES/MIT.txt`](https://github.com/AdnaneKhan/session.js/blob/main/LICENSES/MIT.txt)).
+The voice-call additions (`calls/`, ported from the Session Foundation's
+official clients) and the combined work are licensed
+**AGPL-3.0-or-later** — see the
+[`NOTICE`](https://github.com/AdnaneKhan/session.js/blob/main/NOTICE) and
+the [voice calls license notes](./voice/index.md#license).

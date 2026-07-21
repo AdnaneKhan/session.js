@@ -1,6 +1,15 @@
 # Getting started
 
-Friendly reminder: this package can't be used and won't work with Node.js.
+!!! Note "Runtimes in this fork"
+    Upstream session.js is Bun-only. **This fork also runs on Node ≥ 22** —
+    pass the [`NetworkNode`](./network/node.md) connector when constructing a
+    `Session`. Bun remains fully supported (default connector).
+
+!!! Warning "Voice calls need the fork build"
+    The `@session.js/client` published to npm does **not** include the call
+    patch (`sendCallMessage`, full `call` event fields, `setPollInterval`).
+    For voice calls — and for Node support — install this fork's build; see
+    [Voice calls → Setup & install](./voice/setup.md).
 
 ## Installation
 
