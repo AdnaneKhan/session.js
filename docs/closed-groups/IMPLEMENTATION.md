@@ -293,7 +293,7 @@ code / output sha256 / redacted excerpts / UTC timestamp), same protocol as
 | GQ1 | Exact `ConfigurationMessage` TTL official clients use for group-carrying configs (desktop: 30 d) — verify snode honoring | P7 | open |
 | GQ2 | Android `isValidGroupUpdate` full predicate vs desktop's `lastJoinedTimestamp` watermark — reconcile into one rule set | P4 | open |
 | GQ3 | Desktop zombie auto-cleanup: is there any send-path that converts MEMBER_LEFT → MEMBERS_REMOVED automatically, or is it manual-only? | P6 | **resolved (P6)**: manual-only. Verified in pinned desktop `handleClosedGroupMemberLeft` — on a member's MEMBER_LEFT the receiver removes them and adds a zombie; the "admin removes right away" behaviour is only an aspirational code comment, no automatic MEMBERS_REMOVED/rotation is sent. v1 matches: zombies are cleared only by an explicit `sendRemoveMembers` (which rotates) or by re-adding the member. |
-| GQ4 | libsession UserGroups wrapper: adopt in v1.1 or defer (P7 gate) | P7 | open |
+| GQ4 | libsession UserGroups wrapper: adopt in v1.1 or defer (P7 gate) | P7 | **resolved (P7)**: **deferred to v1.1** — v1 ships the legacy `ConfigurationMessage` sync only (G7-T1/T2). Decision gate: `docs/escalations/G7-T3-usergroups-wrapper.md`. |
 | GQ5 | Group v2/v3 timeline upstream — when does legacy interop stop mattering? (affects investment horizon) | P9 | open |
 
 ## 7. Licensing

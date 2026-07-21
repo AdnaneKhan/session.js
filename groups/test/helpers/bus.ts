@@ -100,6 +100,7 @@ export class BusGroupSession implements GroupSessionLike {
 	};
 	readonly sentUpdates: Array<Parameters<GroupSessionLike["sendClosedGroupUpdate"]>[0]> = [];
 	readonly sentMessages: Array<Parameters<GroupSessionLike["sendGroupMessage"]>[0]> = [];
+	readonly sentConfigs: Array<{ activeClosedGroups: GroupConfigEvent[] }> = [];
 	readonly addedPollers: string[] = [];
 	removedPollers = 0;
 
@@ -199,6 +200,17 @@ export class BusGroupSession implements GroupSessionLike {
 		}
 		if (parsed.to !== this.id) return null; // not addressed to us
 		return { publicKey: hexToBytes(parsed.pub), privateKey: hexToBytes(parsed.priv) };
+	}
+
+	// Legacy config sync: store to our own swarm → every linked device (all
+	// endpoints sharing our id, including ourselves) polls it and reconciles.
+	async sendConfigurationMessage(opts: {
+		activeClosedGroups: GroupConfigEvent[];
+	}): Promise<{ messageHash: string; timestamp: number }> {
+		this.sentConfigs.push(opts);
+		const groups = opts.activeClosedGroups;
+		this.bus.deliverTo(this.id, (ep) => ep.fireSyncClosedGroups(groups));
+		return { messageHash: "bus-c" + this.sentConfigs.length, timestamp: this.bus.now() };
 	}
 
 	// -- test drivers --------------------------------------------------------

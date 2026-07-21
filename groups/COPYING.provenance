@@ -40,7 +40,9 @@ src/group-manager.ts
   (P5), and the member lifecycle — add/NEW-invite + admin keypair-push,
   admin-only remove + ENCRYPTION_KEY_PAIR rotation, leave/zombie/admin-disband,
   rename, and the performIfValid receive gates: watermark, sender-∈-members,
-  admin-only removal, first-admin-not-removable (P6). Licensed under
+  admin-only removal, first-admin-not-removable (P6); multi-device legacy
+  ConfigurationMessage reconciliation — join missing / overwrite / delete
+  absent (P7, desktop ts/receiver/configMessage.ts analog). Licensed under
   AGPL-3.0-or-later.
 
 Expected remaining porting surface (IMPLEMENTATION.md §5, filled in P4–P7):

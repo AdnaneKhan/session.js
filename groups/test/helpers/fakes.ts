@@ -28,6 +28,7 @@ export class FakeGroupSession implements GroupSessionLike {
 	};
 	readonly sentUpdates: Array<Parameters<GroupSessionLike["sendClosedGroupUpdate"]>[0]> = [];
 	readonly sentMessages: Array<Parameters<GroupSessionLike["sendGroupMessage"]>[0]> = [];
+	readonly sentConfigs: Array<{ activeClosedGroups: GroupConfigEvent[] }> = [];
 	readonly addedPollers: Array<{ groupPubKey: string }> = [];
 	removedPollers = 0;
 	#nowValue = 1_751_000_000_000;
@@ -80,6 +81,12 @@ export class FakeGroupSession implements GroupSessionLike {
 		_encryptedKeyPair: Uint8Array,
 	): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array } | null> {
 		return null;
+	}
+	async sendConfigurationMessage(opts: {
+		activeClosedGroups: GroupConfigEvent[];
+	}): Promise<{ messageHash: string; timestamp: number }> {
+		this.sentConfigs.push(opts);
+		return { messageHash: "cfg" + this.sentConfigs.length, timestamp: this.#nowValue };
 	}
 
 	// -- test drivers --------------------------------------------------------

@@ -63,6 +63,15 @@ export interface GroupSessionLike {
 	): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array } | null>;
 
 	/**
+	 * Send a legacy multi-device `ConfigurationMessage` carrying our closed
+	 * groups (latest keypair each) to our own swarm (spec §2.6 mechanism (a),
+	 * TTL 30 d). The client fills in its own display name / profile.
+	 */
+	sendConfigurationMessage(opts: {
+		activeClosedGroups: GroupConfigEvent[];
+	}): Promise<{ messageHash: string; timestamp: number }>;
+
+	/**
 	 * Attach a poller for one group's swarm (namespace −10). The client decrypts
 	 * with the provided keypairs and routes decrypted messages through the
 	 * mapped `groupUpdate` / `message` events. Returns a handle to stop it.

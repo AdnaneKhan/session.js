@@ -6,6 +6,7 @@
  */
 
 import { SignalService } from "@session.js/types/signal-bindings";
+import * as Constants from "@session.js/consts";
 import { ContentMessage, type MessageParams } from "../signal-message";
 import { SessionValidationError, SessionValidationErrorCode } from "@session.js/errors";
 import { hexToBytes } from "@noble/ciphers/utils.js";
@@ -77,6 +78,14 @@ export class ConfigurationMessage extends ContentMessage {
 				message: "contacts must be set",
 			});
 		}
+	}
+
+	/**
+	 * Fork addition (closed-groups support): config sync uses the 30-day config
+	 * TTL (spec §2.6 / GQ1, matching desktop) rather than the 14-day default.
+	 */
+	public ttl(): number {
+		return Constants.TTL_DEFAULT.CONFIG_MESSAGE;
 	}
 
 	public contentProto(): SignalService.Content {

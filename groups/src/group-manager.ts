@@ -88,7 +88,7 @@ export class GroupManager extends EventEmitter {
 	readonly #onGroupMessage = (m: GroupMessageEvent): void =>
 		this.#guard(() => this.#handleGroupMessage(m));
 	readonly #onSyncClosedGroups = (groups: GroupConfigEvent[]): void =>
-		this.#guard(() => this.#handleSyncClosedGroups(groups));
+		this.#guardAsync(() => this.#handleSyncClosedGroups(groups));
 
 	constructor(session: GroupSessionLike, options?: GroupManagerOptions, deps?: GroupManagerDeps) {
 		super();
@@ -687,10 +687,89 @@ export class GroupManager extends EventEmitter {
 		this.emit("groupMessage", message);
 	}
 
-	#handleSyncClosedGroups(groups: GroupConfigEvent[]): void {
-		// P7: reconcile multi-device config (join missing, delete absent,
-		// overwrite state). Skeleton: no-op.
-		void groups;
+	// -- Multi-device config reconciliation (P7) -----------------------------
+
+	/**
+	 * Push our active groups (latest keypair each) to our own swarm as a legacy
+	 * ConfigurationMessage, so linked devices reconcile (spec §2.6 mechanism (a)).
+	 * Only the latest keypair is carried — pre-rotation history is undecryptable
+	 * on linked devices (documented limitation).
+	 */
+	async syncGroupsToLinkedDevices(): Promise<void> {
+		const activeClosedGroups: Array<{
+			publicKey: string;
+			name: string;
+			encryptionKeyPair: { publicKey: Uint8Array; privateKey: Uint8Array };
+			members: string[];
+			admins: string[];
+		}> = [];
+		for (const group of this.getActiveGroups()) {
+			const latest = await this.#keypairs.getLatest(group.publicKey);
+			if (!latest) continue;
+			activeClosedGroups.push({
+				publicKey: group.publicKey,
+				name: group.name,
+				encryptionKeyPair: {
+					publicKey: hexToBytes(latest.publicKey),
+					privateKey: hexToBytes(latest.privateKey),
+				},
+				members: group.members,
+				admins: group.admins,
+			});
+		}
+		await this.#session.sendConfigurationMessage({ activeClosedGroups });
+	}
+
+	/**
+	 * Reconcile an inbound config sync (spec §2.6): join groups we don't know,
+	 * overwrite the state of ones we do (config is authoritative) and append
+	 * their keypair, and delete active groups absent from a non-empty sync (a
+	 * linked device left / was removed — no leave message is sent).
+	 */
+	async #handleSyncClosedGroups(configGroups: GroupConfigEvent[]): Promise<void> {
+		const syncedIds = new Set<string>();
+		for (const cg of configGroups) {
+			syncedIds.add(cg.publicKey);
+			const keypair = {
+				publicKey: bytesToHex(cg.encryptionKeyPair.publicKey),
+				privateKey: bytesToHex(cg.encryptionKeyPair.privateKey),
+			};
+			const existing = this.getGroup(cg.publicKey);
+			if (existing) {
+				existing.name = cg.name;
+				existing.members = cg.members;
+				existing.admins = cg.admins;
+				existing.active = true;
+				await this.saveGroup(existing);
+				await this.#keypairs.append(cg.publicKey, keypair);
+				this.#startPolling(cg.publicKey);
+			} else {
+				const state: GroupState = {
+					publicKey: cg.publicKey,
+					name: cg.name,
+					members: cg.members,
+					admins: cg.admins,
+					zombies: [],
+					active: true,
+					lastJoinedTimestamp: this.now(),
+					formationTimestamp: this.now(),
+					expirationTimer: 0,
+				};
+				await this.saveGroup(state);
+				await this.#keypairs.append(cg.publicKey, keypair);
+				this.#startPolling(cg.publicKey);
+				this.emit("groupJoined", state);
+			}
+		}
+		// Guard against a partial/empty config wiping everything: only delete
+		// absent groups when the sync actually carried groups.
+		if (syncedIds.size > 0) {
+			for (const group of this.getActiveGroups()) {
+				if (!syncedIds.has(group.publicKey)) {
+					await this.#deleteClosedGroup(group.publicKey);
+				}
+			}
+		}
 	}
 
 	// -- Polling lifecycle ---------------------------------------------------

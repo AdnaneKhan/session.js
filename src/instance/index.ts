@@ -21,6 +21,7 @@ import { addPoller, setPollInterval } from "./polling";
 import { sendCallMessage } from "./send-call-message";
 import { sendGroupMessage, sendClosedGroupUpdate } from "./send-group-message";
 import { sealKeypairWrapper, openKeypairWrapper } from "./group-keypair-wrapper";
+import { sendConfigurationMessage } from "./send-configuration-message";
 import { getSnodes } from "./snodes";
 import { getFile } from "./get-file";
 import { deleteMessage, deleteMessages } from "./delete-message";
@@ -221,6 +222,13 @@ export class Session {
 	 * Returns the recovered keypair, or null if not addressed to us / undecryptable.
 	 */
 	public openKeypairWrapper = openKeypairWrapper.bind(this);
+
+	/**
+	 * Advanced (closed groups, multi-device). Send a legacy ConfigurationMessage
+	 * carrying the given closed groups (latest keypair each) to our own swarm so
+	 * linked devices reconcile group state (namespace 0, 30-day TTL).
+	 */
+	public sendConfigurationMessage = sendConfigurationMessage.bind(this);
 
 	/**
 	 * Convert unblinded (prefix 05) Session ID to blinded Session ID (prefix 15)
