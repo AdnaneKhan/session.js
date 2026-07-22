@@ -1,6 +1,7 @@
 import { wrap } from "@/crypto/message-encrypt";
 import type { Session } from "@/instance";
 import { ConfigurationMessage } from "@/messages/schema/configuration-message";
+import { buildConfigurationClosedGroups } from "./send-configuration-message";
 import { toRawMessage } from "@/messages/signal-message";
 import { SessionValidationError, SessionValidationErrorCode } from "@session.js/errors";
 import { SnodeNamespaces } from "@session.js/types/namespaces";
@@ -28,7 +29,7 @@ export async function setDisplayName(this: Session, displayName: string) {
 			displayName: this.displayName,
 			profilePicture: this.avatar?.url,
 			profileKey: this.avatar?.key,
-			activeClosedGroups: [],
+			activeClosedGroups: buildConfigurationClosedGroups(this.configurationClosedGroups),
 			activeOpenGroups: [],
 			contacts: [],
 			timestamp: this.getNowWithNetworkOffset(),

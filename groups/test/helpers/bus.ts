@@ -84,9 +84,9 @@ export class GroupBus {
 		}
 	}
 
-	/** Deliver to every endpoint except the sender (group-swarm semantics). */
-	broadcastExcept(senderId: string, fire: (ep: BusGroupSession) => void): void {
-		for (const ep of this.endpoints.filter((e) => e.id !== senderId)) {
+	/** Deliver to every endpoint except the sending device (group-swarm semantics). */
+	broadcastExcept(sender: BusGroupSession, fire: (ep: BusGroupSession) => void): void {
+		for (const ep of this.endpoints.filter((e) => e !== sender)) {
 			queueMicrotask(() => fire(ep));
 		}
 	}
@@ -133,9 +133,10 @@ export class BusGroupSession implements GroupSessionLike {
 		const isGroup = opts.encryptionPublicKey !== undefined;
 		this.bus.wire.push({ from: this.id, to: opts.to, isGroup, type: opts.controlMessage.type });
 		if (isGroup) {
-			// Group swarm: every member polls it; the sender's own copy is dropped.
+			// Group swarm: every device polls it; only the sending device suppresses
+			// the stored hash, while linked devices with the same id still receive it.
 			const event = controlToEvent(opts.controlMessage, this.id, opts.to, true, timestamp);
-			this.bus.broadcastExcept(this.id, (ep) => ep.fireGroupUpdate(event));
+			this.bus.broadcastExcept(this, (ep) => ep.fireGroupUpdate(event));
 		} else {
 			// 1:1 DM to a member (NEW invite / keypair reply).
 			const groupId = opts.controlMessage.publicKey
@@ -160,7 +161,7 @@ export class BusGroupSession implements GroupSessionLike {
 			text: opts.text,
 			timestamp,
 		};
-		this.bus.broadcastExcept(this.id, (ep) => ep.fireMessage(event));
+		this.bus.broadcastExcept(this, (ep) => ep.fireMessage(event));
 		return { messageHash: "bus-m" + this.sentMessages.length, timestamp };
 	}
 

@@ -2,16 +2,16 @@
 
 Closed groups need **two pieces**, both from this fork:
 
-| Piece | Version | Why |
-|---|---|---|
+| Piece                          | Version           | Why                                                                                                                                                                                                                                                                                      |
+| ------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@session.js/client` (patched) | `0.0.57-groups.1` | Adds the group core: `./crypto` export, `decryptForClosedGroup` fix, `GroupPoller`, `sendGroupMessage` / `sendClosedGroupUpdate`, `sendConfigurationMessage`, `addGroupPoller` / `removeGroupPoller`, the `ClosedGroupControlMessage` schema + `groupUpdate` / `syncClosedGroups` events |
-| `@session.js/groups` | `0.1.0` | The group engine (`GroupManager`: lifecycle, keypair registry, rotation, config reconciliation) |
+| `@session.js/groups`           | `0.1.0`           | The group engine (`GroupManager`: lifecycle, keypair registry, rotation, config reconciliation)                                                                                                                                                                                          |
 
 !!! Warning "The published client won't work"
-    The `@session.js/client@0.0.57` published to npm does **not** carry the
-    group patches (no `groupUpdate` event, `decryptForClosedGroup` is broken
-    upstream, no `GroupPoller` / group send methods). You must use this fork's
-    build (`0.0.57-groups.1`).
+The `@session.js/client@0.0.57` published to npm does **not** carry the
+group patches (no `groupUpdate` event, `decryptForClosedGroup` is broken
+upstream, no `GroupPoller` / group send methods). You must use this fork's
+build (`0.0.57-groups.1`).
 
 ## Runtimes
 
@@ -52,16 +52,16 @@ import { GroupManager, InMemoryGroupStorage } from "@session.js/groups";
 
 await ready;
 
-const session = new Session();               // or new Session({ network: new NetworkNode() }) on Node
+const session = new Session(); // or new Session({ network: new NetworkNode() }) on Node
 session.setMnemonic(process.env.SESSION_MNEMONIC!);
 session.addPoller(new Poller({ interval: 1500 }));
 
 // The GroupManager drives group state; it talks to the Session through the
 // structural GroupSessionLike interface (a boundary cast, like @session.js/calls).
 const groups = new GroupManager(session as never, undefined, {
-	storage: new InMemoryGroupStorage(),      // or a persistent Storage
+	storage: new InMemoryGroupStorage(), // or a persistent Storage
 });
-await groups.init();                          // load known groups from storage
+await groups.init(); // load known groups and resume polling
 
 groups.on("groupMessage", (m) => console.log(`${m.from} in ${m.groupId}: ${m.text}`));
 groups.on("groupJoined", (g) => console.log(`joined ${g.name}`));
@@ -69,4 +69,5 @@ groups.on("groupJoined", (g) => console.log(`joined ${g.name}`));
 
 The `GroupManager` takes **its own `Storage`** (the client's storage is
 protected). Persist it (e.g. `@session.js/file-keyval-storage`) to keep groups
-across restarts.
+across restarts. The patched `Session` separately persists group poll cursors
+in its own storage and clears them when a group is deleted.

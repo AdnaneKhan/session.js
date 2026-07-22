@@ -12,47 +12,47 @@ new GroupManager(
 
 ### Lifecycle
 
-| Method | Description |
-|---|---|
-| `init(): Promise<void>` | Load known groups from storage (idempotent). Call after construction. |
-| `dispose(): Promise<void>` | Unsubscribe from the session, stop group pollers (idempotent). |
-| `isInitialized(): boolean` / `isDisposed(): boolean` | State flags. |
-| `ourId: string` | Our Session ID. |
-| `now(): number` | Clock used for watermarks (injectable via `options.now`). |
+| Method                                               | Description                                                                       |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `init(): Promise<void>`                              | Load known groups and resume their pollers (idempotent). Call after construction. |
+| `dispose(): Promise<void>`                           | Unsubscribe from the session, stop group pollers (idempotent).                    |
+| `isInitialized(): boolean` / `isDisposed(): boolean` | State flags.                                                                      |
+| `ourId: string`                                      | Our Session ID.                                                                   |
+| `now(): number`                                      | Clock used for watermarks (injectable via `options.now`).                         |
 
 ### Group operations
 
-| Method | Description |
-|---|---|
-| `createGroup({ name, members, expirationTimer? }): Promise<GroupState>` | Create + invite (you become the admin). |
-| `sendMessage(groupPubKey, text?, { expireTimer? }): Promise<{ messageHash, timestamp }>` | Send a group chat message. |
-| `sendAddMembers(groupPubKey, membersToAdd[]): Promise<void>` | Add members (any member). |
-| `sendRemoveMembers(groupPubKey, membersToRemove[]): Promise<void>` | Remove members (admin-only; rotates the key). |
-| `sendRename(groupPubKey, newName): Promise<void>` | Rename (any member). |
-| `sendLeave(groupPubKey): Promise<void>` | Leave (deletes locally). |
-| `syncGroupsToLinkedDevices(): Promise<void>` | Push active groups (latest keypair each) as a legacy config sync. |
+| Method                                                                                   | Description                                                       |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `createGroup({ name, members, expirationTimer? }): Promise<GroupState>`                  | Create + invite (you become the admin).                           |
+| `sendMessage(groupPubKey, text?, { expireTimer? }): Promise<{ messageHash, timestamp }>` | Send a group chat message.                                        |
+| `sendAddMembers(groupPubKey, membersToAdd[]): Promise<void>`                             | Add members (any member).                                         |
+| `sendRemoveMembers(groupPubKey, membersToRemove[]): Promise<void>`                       | Remove members (admin-only; rotates the key).                     |
+| `sendRename(groupPubKey, newName): Promise<void>`                                        | Rename (any member).                                              |
+| `sendLeave(groupPubKey): Promise<void>`                                                  | Leave (deletes locally).                                          |
+| `syncGroupsToLinkedDevices(): Promise<void>`                                             | Push active groups (latest keypair each) as a legacy config sync. |
 
 ### Queries
 
-| Method | Description |
-|---|---|
-| `getGroups(): GroupState[]` | All known groups (incl. inactive). |
-| `getActiveGroups(): GroupState[]` | Active groups only. |
-| `getGroup(publicKey): GroupState \| undefined` | One group. |
-| `getEncryptionKeyPairs(publicKey): Promise<GroupEncryptionKeypair[]>` | All keypairs (append order, newest last). |
-| `getLatestEncryptionKeyPair(publicKey): Promise<GroupEncryptionKeypair \| undefined>` | The key used to send. |
-| `storage: GroupStorage` / `keypairs: KeypairRegistry` | Typed persistence access. |
+| Method                                                                                | Description                               |
+| ------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `getGroups(): GroupState[]`                                                           | All known groups (incl. inactive).        |
+| `getActiveGroups(): GroupState[]`                                                     | Active groups only.                       |
+| `getGroup(publicKey): GroupState \| undefined`                                        | One group.                                |
+| `getEncryptionKeyPairs(publicKey): Promise<GroupEncryptionKeypair[]>`                 | All keypairs (append order, newest last). |
+| `getLatestEncryptionKeyPair(publicKey): Promise<GroupEncryptionKeypair \| undefined>` | The key used to send.                     |
+| `storage: GroupStorage` / `keypairs: KeypairRegistry`                                 | Typed persistence access.                 |
 
 ### Events
 
-| Event | Payload |
-|---|---|
-| `groupCreated` | `GroupState` |
-| `groupJoined` | `GroupState` |
-| `groupChanged` | `GroupState` (name / members / keypair changed) |
-| `groupRemoved` | `{ publicKey: string }` |
+| Event          | Payload                                                  |
+| -------------- | -------------------------------------------------------- |
+| `groupCreated` | `GroupState`                                             |
+| `groupJoined`  | `GroupState`                                             |
+| `groupChanged` | `GroupState` (name / members / keypair changed)          |
+| `groupRemoved` | `{ publicKey: string }`                                  |
 | `groupMessage` | `{ type: "group", groupId, from, id, text?, timestamp }` |
-| `error` | `{ groupPubKey?, error }` |
+| `error`        | `{ groupPubKey?, error }`                                |
 
 ## `GroupState`
 

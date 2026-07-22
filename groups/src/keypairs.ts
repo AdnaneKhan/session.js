@@ -14,13 +14,14 @@
 // in-flight / pre-rotation messages and by newly-linked devices); keypairs are
 // appended (no timestamp ordering) and deduped by value; "latest" = last
 // appended.
-import type { GroupStorage } from "./storage";
-import type { GroupEncryptionKeypair } from "./types";
+import type { GroupStorage } from "./storage.js";
+import type { GroupEncryptionKeypair } from "./types.js";
 
 export class KeypairRegistry {
 	readonly #storage: GroupStorage;
 	/** In-memory cache of the persisted keypairs, per group (desktop's cacheOfClosedGroupKeyPairs). */
 	readonly #cache = new Map<string, GroupEncryptionKeypair[]>();
+	#writeQueue: Promise<void> = Promise.resolve();
 
 	constructor(storage: GroupStorage) {
 		this.#storage = storage;
@@ -41,17 +42,21 @@ export class KeypairRegistry {
 	 * @returns true if the keypair was newly stored, false if it was a duplicate.
 	 */
 	async append(groupPubKey: string, keypair: GroupEncryptionKeypair): Promise<boolean> {
-		const existing = await this.getAll(groupPubKey);
-		const alreadySaved = existing.some(
-			(k) => k.publicKey === keypair.publicKey && k.privateKey === keypair.privateKey,
-		);
-		if (alreadySaved) {
-			return false;
-		}
-		existing.push({ publicKey: keypair.publicKey, privateKey: keypair.privateKey });
-		this.#cache.set(groupPubKey, existing);
-		await this.#storage.setKeypairs(groupPubKey, existing);
-		return true;
+		let added = false;
+		const operation = this.#writeQueue.then(async () => {
+			const existing = await this.getAll(groupPubKey);
+			const alreadySaved = existing.some(
+				(k) => k.publicKey === keypair.publicKey && k.privateKey === keypair.privateKey,
+			);
+			if (alreadySaved) return;
+			existing.push({ publicKey: keypair.publicKey, privateKey: keypair.privateKey });
+			await this.#storage.setKeypairs(groupPubKey, existing);
+			this.#cache.set(groupPubKey, existing);
+			added = true;
+		});
+		this.#writeQueue = operation.catch(() => undefined);
+		await operation;
+		return added;
 	}
 
 	/** The latest keypair (last appended), or undefined if none. */
@@ -62,8 +67,12 @@ export class KeypairRegistry {
 
 	/** Remove all keypairs for a group (used when the group is deleted). */
 	async removeAll(groupPubKey: string): Promise<void> {
-		this.#cache.set(groupPubKey, []);
-		await this.#storage.setKeypairs(groupPubKey, []);
+		const operation = this.#writeQueue.then(async () => {
+			await this.#storage.setKeypairs(groupPubKey, []);
+			this.#cache.set(groupPubKey, []);
+		});
+		this.#writeQueue = operation.catch(() => undefined);
+		await operation;
 	}
 
 	/** Drop the in-memory cache entry (forces a re-read from storage next time). */

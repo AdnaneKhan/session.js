@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { GroupManager } from "../src/group-manager";
 import { GroupStorage, InMemoryGroupStorage } from "../src/storage";
 import type { GroupState, GroupMessageEvent } from "../src/types";
-import { FakeGroupSession, GROUP_A, MEMBER_A, OWN_ID } from "./helpers/fakes";
+import { FakeGroupSession, GROUP_A, MEMBER_A, MEMBER_B, OWN_ID } from "./helpers/fakes";
 
 function sampleState(overrides: Partial<GroupState> = {}): GroupState {
 	return {
@@ -35,12 +35,14 @@ test("init() loads known groups from storage", async () => {
 	await gs.addGroupId(GROUP_A);
 	await gs.setState(GROUP_A, sampleState());
 
-	const manager = new GroupManager(new FakeGroupSession(), undefined, { storage });
+	const session = new FakeGroupSession();
+	const manager = new GroupManager(session, undefined, { storage });
 	expect(manager.isInitialized()).toBe(false);
 	await manager.init();
 	expect(manager.isInitialized()).toBe(true);
 	expect(manager.getGroups()).toHaveLength(1);
 	expect(manager.getGroup(GROUP_A)?.name).toBe("g");
+	expect(session.addedPollers).toEqual([{ groupPubKey: GROUP_A }]);
 	// init is idempotent
 	await manager.init();
 	expect(manager.getGroups()).toHaveLength(1);
@@ -137,14 +139,11 @@ test("dispose unsubscribes from the session and is idempotent", async () => {
 
 test("a throwing consumer logger is contained", () => {
 	const session = new FakeGroupSession();
-	const manager = new GroupManager(
-		session,
-		{
-			logger: () => {
-				throw new Error("consumer logger exploded");
-			},
+	const manager = new GroupManager(session, {
+		logger: () => {
+			throw new Error("consumer logger exploded");
 		},
-	);
+	});
 	// Firing an event must not throw even though the logger throws.
 	expect(() =>
 		session.fireMessage({
@@ -157,3 +156,46 @@ test("a throwing consumer logger is contained", () => {
 	).not.toThrow();
 	void manager;
 });
+
+test("a throwing consumer event listener is contained even without an error listener", async () => {
+	const session = new FakeGroupSession();
+	const manager = new GroupManager(session);
+	await manager.saveGroup(sampleState());
+	manager.on("groupMessage", () => {
+		throw new Error("consumer exploded");
+	});
+	expect(() =>
+		session.fireMessage({
+			type: "group",
+			groupId: GROUP_A,
+			from: MEMBER_A,
+			id: "contained",
+			timestamp: 2,
+		}),
+	).not.toThrow();
+});
+
+test("a failed member-add send does not commit local state or suppress a retry", async () => {
+	class FlakySession extends FakeGroupSession {
+		attempts = 0;
+		override async sendClosedGroupUpdate(
+			opts: Parameters<FakeGroupSession["sendClosedGroupUpdate"]>[0],
+		): Promise<{ messageHash: string; timestamp: number }> {
+			this.attempts += 1;
+			if (this.attempts === 1) throw new Error("offline");
+			return super.sendClosedGroupUpdate(opts);
+		}
+	}
+
+	const session = new FlakySession();
+	const manager = new GroupManager(session);
+	await manager.saveGroup(sampleState({ admins: [OWN_ID] }));
+	await manager.keypairs.append(GROUP_A, KP);
+	await expect(manager.sendAddMembers(GROUP_A, [MEMBER_B])).rejects.toThrow("offline");
+	expect(manager.getGroup(GROUP_A)?.members).not.toContain(MEMBER_B);
+	await manager.sendAddMembers(GROUP_A, [MEMBER_B]);
+	expect(session.attempts).toBeGreaterThan(1);
+	expect(manager.getGroup(GROUP_A)?.members).toContain(MEMBER_B);
+});
+
+const KP = { publicKey: "22".repeat(32), privateKey: "33".repeat(32) };

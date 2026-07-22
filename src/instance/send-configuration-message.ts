@@ -29,18 +29,31 @@ export type ConfigurationClosedGroupInput = {
 	admins: string[];
 };
 
-export async function sendConfigurationMessage(
-	this: Session,
-	opts: { activeClosedGroups: ConfigurationClosedGroupInput[] },
-): Promise<{ messageHash: string; timestamp: number }> {
-	if (!this.sessionID || !this.keys)
-		throw new SessionRuntimeError({
-			code: SessionRuntimeErrorCode.EmptyUser,
-			message: "Instance is not initialized; use setMnemonic first",
-		});
+function cloneConfigurationGroup(g: ConfigurationClosedGroupInput): ConfigurationClosedGroupInput {
+	return {
+		publicKey: g.publicKey,
+		name: g.name,
+		encryptionKeyPair: {
+			publicKey: new Uint8Array(g.encryptionKeyPair.publicKey),
+			privateKey: new Uint8Array(g.encryptionKeyPair.privateKey),
+		},
+		members: [...g.members],
+		admins: [...g.admins],
+	};
+}
 
-	const timestamp = this.getNowWithNetworkOffset();
-	const activeClosedGroups = (opts.activeClosedGroups ?? []).map(
+/** Update the full closed-group snapshot included in subsequent legacy configs. */
+export function setConfigurationClosedGroups(
+	this: Session,
+	activeClosedGroups: ConfigurationClosedGroupInput[],
+): void {
+	this.configurationClosedGroups = activeClosedGroups.map(cloneConfigurationGroup);
+}
+
+export function buildConfigurationClosedGroups(
+	activeClosedGroups: ConfigurationClosedGroupInput[],
+): ConfigurationMessageClosedGroup[] {
+	return activeClosedGroups.map(
 		(g) =>
 			new ConfigurationMessageClosedGroup({
 				publicKey: hexToBytes(g.publicKey),
@@ -53,12 +66,29 @@ export async function sendConfigurationMessage(
 				admins: g.admins,
 			}),
 	);
+}
+
+export async function sendConfigurationMessage(
+	this: Session,
+	opts: { activeClosedGroups: ConfigurationClosedGroupInput[] },
+): Promise<{ messageHash: string; timestamp: number }> {
+	if (!this.sessionID || !this.keys)
+		throw new SessionRuntimeError({
+			code: SessionRuntimeErrorCode.EmptyUser,
+			message: "Instance is not initialized; use setMnemonic first",
+		});
+
+	const timestamp = this.getNowWithNetworkOffset();
+	setConfigurationClosedGroups.call(this, opts.activeClosedGroups ?? []);
+	const activeClosedGroups = buildConfigurationClosedGroups(this.configurationClosedGroups);
 
 	const msg = new ConfigurationMessage({
 		timestamp,
 		activeClosedGroups,
 		activeOpenGroups: [],
 		displayName: this.displayName || getPlaceholderDisplayName(this.sessionID),
+		profilePicture: this.avatar?.url,
+		profileKey: this.avatar?.key,
 		contacts: [],
 	});
 

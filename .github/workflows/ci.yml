@@ -1,4 +1,4 @@
-# CI for the session.js client fork + @session.js/calls (plan G7 / P0-T1).
+# CI for the session.js client fork, @session.js/calls, and @session.js/groups.
 #
 # This repo lives on Gitea (git.hloth.dev) — Gitea Actions reads
 # .github/workflows with GitHub-Actions-compatible syntax.
@@ -91,3 +91,32 @@ jobs:
         if: matrix.runtime == 'node-22'
         timeout-minutes: 5
         run: cd calls && node --experimental-strip-types spike/werift-loopback.ts
+
+  groups:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [bun-latest, node-22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install (groups)
+        run: cd groups && bun install
+      - name: build (groups)
+        run: cd groups && bun run build
+      - name: groups tests (offline)
+        run: cd groups && bun test
+      - name: groups E2E matrix (offline)
+        run: cd groups && bun e2e/run-matrix.ts
+      - name: runtime import check (bun)
+        if: matrix.runtime == 'bun-latest'
+        run: cd groups && bun -e "const m = await import('./dist/index.js'); if (typeof m.GroupManager !== 'function') throw new Error('no GroupManager export'); console.log('groups bun import OK');"
+      - name: runtime import check (node 22)
+        if: matrix.runtime == 'node-22'
+        run: cd groups && node -e "import('./dist/index.js').then(m => { if (typeof m.GroupManager !== 'function') throw new Error('no GroupManager export'); console.log('groups node import OK'); })"

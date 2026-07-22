@@ -2,8 +2,10 @@
 // P4 — formation & join (two-manager offline bus). See docs/evidence/G4-T1..T3.md.
 import { expect, test } from "bun:test";
 import { GroupManager } from "../src/group-manager";
+import { generateEncryptionKeypair } from "../src/keygen";
 import { GroupControlMessageType, type GroupState } from "../src/types";
 import { GroupBus, BusGroupSession, tick } from "./helpers/bus";
+import { hexToBytes } from "@noble/ciphers/utils.js";
 
 const A = "05" + "aa".repeat(32);
 const B = "05" + "bb".repeat(32);
@@ -33,7 +35,9 @@ test("createGroup forms a group, sends NEW to every member incl. self, and the i
 	expect(group.members.sort()).toEqual([A, B].sort());
 	// A sent one NEW DM to each member (B and itself).
 	expect(sa.sentUpdates).toHaveLength(2);
-	expect(sa.sentUpdates.every((u) => u.controlMessage.type === GroupControlMessageType.NEW)).toBe(true);
+	expect(sa.sentUpdates.every((u) => u.controlMessage.type === GroupControlMessageType.NEW)).toBe(
+		true,
+	);
 	expect(sa.sentUpdates.map((u) => u.to).sort()).toEqual([A, B].sort());
 	// A started polling the group.
 	expect(sa.addedPollers).toContain(group.publicKey);
@@ -118,8 +122,12 @@ test("duplicate NEW invite only joins once and dedupes the keypair", async () =>
 			members: [A, B].map((m) => new Uint8Array(Buffer.from(m, "hex"))),
 			admins: [A].map((m) => new Uint8Array(Buffer.from(m, "hex"))),
 			encryptionKeyPair: {
-				publicKey: new Uint8Array(Buffer.from((await ma.getLatestEncryptionKeyPair(group.publicKey))!.publicKey, "hex")),
-				privateKey: new Uint8Array(Buffer.from((await ma.getLatestEncryptionKeyPair(group.publicKey))!.privateKey, "hex")),
+				publicKey: new Uint8Array(
+					Buffer.from((await ma.getLatestEncryptionKeyPair(group.publicKey))!.publicKey, "hex"),
+				),
+				privateKey: new Uint8Array(
+					Buffer.from((await ma.getLatestEncryptionKeyPair(group.publicKey))!.privateKey, "hex"),
+				),
 			},
 		},
 	});
@@ -127,6 +135,35 @@ test("duplicate NEW invite only joins once and dedupes the keypair", async () =>
 	// Still joined once, single keypair (dedupe by value).
 	expect(joined).toHaveLength(1);
 	expect(mb.getGroups()).toHaveLength(1);
+	expect(await mb.getEncryptionKeyPairs(group.publicKey)).toHaveLength(1);
+});
+
+test("a forged NEW from an outsider cannot replace an active group's latest keypair", async () => {
+	const { sb, ma, mb } = twoManagers();
+	const group = await ma.createGroup({ name: "secure", members: [B] });
+	await tick();
+	const before = await mb.getLatestEncryptionKeyPair(group.publicKey);
+	const attackerKey = generateEncryptionKeypair();
+
+	sb.fireGroupUpdate({
+		type: GroupControlMessageType.NEW,
+		groupId: group.publicKey,
+		publicKey: group.publicKey,
+		from: C,
+		isGroupMessage: false,
+		timestamp: Date.now() + 1_000,
+		name: "forged",
+		members: [B, C],
+		admins: [C],
+		encryptionKeyPair: {
+			publicKey: hexToBytes(attackerKey.publicKey),
+			privateKey: hexToBytes(attackerKey.privateKey),
+		},
+		wrappers: [],
+	});
+	await tick();
+
+	expect(await mb.getLatestEncryptionKeyPair(group.publicKey)).toEqual(before);
 	expect(await mb.getEncryptionKeyPairs(group.publicKey)).toHaveLength(1);
 });
 

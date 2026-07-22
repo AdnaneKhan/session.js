@@ -70,6 +70,8 @@ export interface GroupSessionLike {
 	sendConfigurationMessage(opts: {
 		activeClosedGroups: GroupConfigEvent[];
 	}): Promise<{ messageHash: string; timestamp: number }>;
+	/** Update the full closed-group snapshot included in other future config sends. */
+	setConfigurationClosedGroups?(activeClosedGroups: GroupConfigEvent[]): void;
 
 	/**
 	 * Attach a poller for one group's swarm (namespace −10). The client decrypts
@@ -79,11 +81,11 @@ export interface GroupSessionLike {
 	 */
 	addGroupPoller(opts: {
 		groupPubKey: string;
-		getEncryptionKeyPairs: () =>
-			| GroupEncryptionKeypair[]
-			| Promise<GroupEncryptionKeypair[]>;
+		getEncryptionKeyPairs: () => GroupEncryptionKeypair[] | Promise<GroupEncryptionKeypair[]>;
 	}): GroupPollerHandle;
 	removeGroupPoller(handle: GroupPollerHandle): void;
+	/** Clear the core poller's persisted cursor/retry state for a deleted group. */
+	clearGroupPollerState?(groupPubKey: string): void | Promise<void>;
 }
 
 /** Opaque handle returned by addGroupPoller. */

@@ -12,7 +12,7 @@
 // Written fresh from the published address/key facts. Uses noble directly.
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex } from "@noble/ciphers/utils.js";
-import type { GroupEncryptionKeypair } from "./types";
+import type { GroupEncryptionKeypair } from "./types.js";
 
 /** Generate a new legacy closed-group address (05-prefixed, 66 chars). */
 export function generateGroupAddress(): string {

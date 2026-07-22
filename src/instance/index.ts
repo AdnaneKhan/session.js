@@ -12,7 +12,7 @@ import type { SessionKeys } from "@session.js/keypair";
 import type { Snode } from "@session.js/types/snode";
 import type { Swarm } from "@session.js/types/swarm";
 import type { Poller, GroupPoller } from "@/polling";
-import { addGroupPoller, removeGroupPoller } from "./group-poller-manager";
+import { addGroupPoller, clearGroupPollerState, removeGroupPoller } from "./group-poller-manager";
 
 import { getMnemonic, setMnemonic } from "./get-set-mnemomic";
 import { sendMessage } from "./send-message";
@@ -22,7 +22,11 @@ import { addPoller, setPollInterval } from "./polling";
 import { sendCallMessage } from "./send-call-message";
 import { sendGroupMessage, sendClosedGroupUpdate } from "./send-group-message";
 import { sealKeypairWrapper, openKeypairWrapper } from "./group-keypair-wrapper";
-import { sendConfigurationMessage } from "./send-configuration-message";
+import {
+	sendConfigurationMessage,
+	setConfigurationClosedGroups,
+	type ConfigurationClosedGroupInput,
+} from "./send-configuration-message";
 import { getSnodes } from "./snodes";
 import { getFile } from "./get-file";
 import { deleteMessage, deleteMessages } from "./delete-message";
@@ -46,6 +50,8 @@ export class Session {
 	protected avatar: Profile["avatar"];
 	protected network: Network;
 	protected storage: Storage;
+	/** Full legacy closed-group snapshot included whenever this Session sends config. */
+	public configurationClosedGroups: ConfigurationClosedGroupInput[] = [];
 	protected snodes: Snode[] | undefined;
 	protected ourSwarms: Swarm[] | undefined;
 	protected ourSwarm: Swarm | undefined;
@@ -232,6 +238,8 @@ export class Session {
 	 * linked devices reconcile group state (namespace 0, 30-day TTL).
 	 */
 	public sendConfigurationMessage = sendConfigurationMessage.bind(this);
+	/** Update the closed-group snapshot included in future configuration sends. */
+	public setConfigurationClosedGroups = setConfigurationClosedGroups.bind(this);
 
 	/**
 	 * Advanced (closed groups). Attach a poller for one legacy closed group
@@ -241,6 +249,8 @@ export class Session {
 	public addGroupPoller = addGroupPoller.bind(this);
 	/** Advanced (closed groups). Stop and remove a group poller by handle. */
 	public removeGroupPoller = removeGroupPoller.bind(this);
+	/** Delete a group's persisted poll cursor and undecryptable retry cache. */
+	public clearGroupPollerState = clearGroupPollerState.bind(this);
 
 	/**
 	 * Convert unblinded (prefix 05) Session ID to blinded Session ID (prefix 15)

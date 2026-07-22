@@ -7,6 +7,7 @@
 import * as Constants from "@session.js/consts";
 import { SignalService } from "@session.js/types/signal-bindings";
 import { SessionValidationError, SessionValidationErrorCode } from "@session.js/errors";
+import { bytesToHex } from "@noble/ciphers/utils.js";
 import { ContentMessage, type MessageParams } from "../signal-message";
 
 const ControlType = SignalService.DataMessage.ClosedGroupControlMessage.Type;
@@ -78,8 +79,7 @@ export class ClosedGroupControlMessage extends ContentMessage {
 		if (params.type === ControlType.ENCRYPTION_KEY_PAIR_REQUEST) {
 			throw new SessionValidationError({
 				code: SessionValidationErrorCode.InvalidOptions,
-				message:
-					"ENCRYPTION_KEY_PAIR_REQUEST is unused by official clients and cannot be sent",
+				message: "ENCRYPTION_KEY_PAIR_REQUEST is unused by official clients and cannot be sent",
 			});
 		}
 
@@ -117,9 +117,7 @@ export class ClosedGroupControlMessage extends ContentMessage {
 			case ControlType.MEMBERS_ADDED:
 			case ControlType.MEMBERS_REMOVED: {
 				if (!params.members?.length) {
-					throw invalid(
-						`${ControlType[params.type]} requires a non-empty members list`,
-					);
+					throw invalid(`${ControlType[params.type]} requires a non-empty members list`);
 				}
 				break;
 			}
@@ -207,5 +205,5 @@ function areAdminsMembers(admins: Uint8Array[], members: Uint8Array[]): boolean 
 }
 
 function bytesToKey(bytes: Uint8Array): string {
-	return Buffer.from(bytes).toString("hex");
+	return bytesToHex(bytes);
 }

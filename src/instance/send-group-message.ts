@@ -75,6 +75,12 @@ export async function sendGroupMessage(
 		});
 	assertSessionId(to);
 	assertEncryptionKey(encryptionPublicKey);
+	if (expirationType === "deleteAfterRead") {
+		throw new SessionValidationError({
+			code: SessionValidationErrorCode.InvalidOptions,
+			message: "Legacy closed groups support deleteAfterSend only",
+		});
+	}
 
 	const ts = timestamp ?? this.getNowWithNetworkOffset();
 	const msg = new VisibleMessage({
@@ -104,6 +110,10 @@ export async function sendGroupMessage(
 		{ networkTimestamp: ts },
 	);
 	const messageHash = await this._storeMessage({ message: rawMessage, data: wrappedMessage });
+	// The sending device has already surfaced this message locally. Mark only
+	// this hash as seen so its own group poller suppresses the network copy while
+	// linked devices (same Session identity, different storage) still receive it.
+	await this.storage.set("message_hash:" + messageHash, ts.toString());
 	return { messageHash, timestamp: ts };
 }
 
@@ -151,9 +161,7 @@ export async function sendClosedGroupUpdate(
 	const ts = timestamp ?? this.getNowWithNetworkOffset();
 	const msg = new ClosedGroupControlMessage({ ...controlMessage, timestamp: ts });
 
-	const namespace = isGroup
-		? SnodeNamespaces.ClosedGroupMessage
-		: SnodeNamespaces.UserMessages;
+	const namespace = isGroup ? SnodeNamespaces.ClosedGroupMessage : SnodeNamespaces.UserMessages;
 	const rawMessage = toRawMessage(to, msg, namespace, isGroup);
 	const [wrappedMessage] = await wrap(
 		this.keys,
@@ -172,5 +180,8 @@ export async function sendClosedGroupUpdate(
 		{ networkTimestamp: ts },
 	);
 	const messageHash = await this._storeMessage({ message: rawMessage, data: wrappedMessage });
+	if (isGroup) {
+		await this.storage.set("message_hash:" + messageHash, ts.toString());
+	}
 	return { messageHash, timestamp: ts };
 }

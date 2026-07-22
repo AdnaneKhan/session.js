@@ -38,11 +38,11 @@ The invite's envelope timestamp becomes the group's **watermark**
 Once joined, the `GroupManager` (via the core `GroupPoller`, namespace −10)
 receives and applies group changes, emitting events:
 
-| Event | When |
-|---|---|
+| Event          | When                                                                     |
+| -------------- | ------------------------------------------------------------------------ |
 | `groupMessage` | A decrypted group chat message (`{ groupId, from, text, timestamp, … }`) |
-| `groupChanged` | Name / members / keypair changed |
-| `groupRemoved` | We were removed, an admin left (disband), or we left |
+| `groupChanged` | Name / members / keypair changed                                         |
+| `groupRemoved` | We were removed, an admin left (disband), or we left                     |
 
 ```ts
 groups.on("groupMessage", (m) => {
@@ -57,8 +57,9 @@ groups.on("groupRemoved", ({ publicKey }) => {
 ```
 
 The **real author** of a group message is recovered from the sealed box
-(`m.from`), never from the envelope (whose source is the group address). Your
-own messages are dropped (you don't receive your own group traffic back).
+(`m.from`), never from the envelope (whose source is the group address). The
+sending device suppresses its own echoed message by hash, while another linked
+device using the same Session ID still receives it.
 
 ## Undecryptable messages
 

@@ -6,11 +6,13 @@
 //   closed_group_index                    — JSON string[] of known group ids
 //   closed_group:{groupId}:state          — JSON GroupState
 //   closed_group:{groupId}:keypairs       — JSON GroupEncryptionKeypair[] (append order)
-//   closed_group:{groupId}:last_hashes    — JSON (consumed by the group poller)
-//   closed_group:{groupId}:undecryptable  — JSON cached undecryptable envelopes (P5)
+//   closed_group:{groupId}:last_hashes    — defensive cleanup for shared/legacy stores
+//   closed_group:{groupId}:undecryptable  — defensive cleanup for shared/legacy stores
+// The live GroupPoller owns the last two keys in the client's Session storage;
+// GroupManager explicitly clears that store through clearGroupPollerState.
 // Written fresh.
 
-import type { GroupEncryptionKeypair, GroupState } from "./types";
+import type { GroupEncryptionKeypair, GroupState } from "./types.js";
 
 /** Structural string→string KV store (may be sync or async). */
 export interface StorageLike {
@@ -39,12 +41,13 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 /** Typed accessors over a StorageLike using the closed_group key schema. */
 export class GroupStorage {
 	readonly #storage: StorageLike;
+	#indexQueue: Promise<void> = Promise.resolve();
 
 	constructor(storage: StorageLike) {
 		this.#storage = storage;
 	}
 
-	/** The underlying store (for the group poller's lastHashes). */
+	/** The underlying store (advanced use and tests). */
 	get raw(): StorageLike {
 		return this.#storage;
 	}
@@ -54,16 +57,24 @@ export class GroupStorage {
 	}
 
 	async addGroupId(groupId: string): Promise<void> {
-		const ids = await this.getGroupIds();
-		if (!ids.includes(groupId)) {
-			ids.push(groupId);
-			await this.#storage.set(INDEX_KEY, JSON.stringify(ids));
-		}
+		const operation = this.#indexQueue.then(async () => {
+			const ids = await this.getGroupIds();
+			if (!ids.includes(groupId)) {
+				ids.push(groupId);
+				await this.#storage.set(INDEX_KEY, JSON.stringify(ids));
+			}
+		});
+		this.#indexQueue = operation.catch(() => undefined);
+		await operation;
 	}
 
 	async removeGroupId(groupId: string): Promise<void> {
-		const ids = (await this.getGroupIds()).filter((id) => id !== groupId);
-		await this.#storage.set(INDEX_KEY, JSON.stringify(ids));
+		const operation = this.#indexQueue.then(async () => {
+			const ids = (await this.getGroupIds()).filter((id) => id !== groupId);
+			await this.#storage.set(INDEX_KEY, JSON.stringify(ids));
+		});
+		this.#indexQueue = operation.catch(() => undefined);
+		await operation;
 	}
 
 	async getState(groupId: string): Promise<GroupState | null> {
@@ -75,10 +86,7 @@ export class GroupStorage {
 	}
 
 	async getKeypairs(groupId: string): Promise<GroupEncryptionKeypair[]> {
-		return parseJson<GroupEncryptionKeypair[]>(
-			await this.#storage.get(keypairsKey(groupId)),
-			[],
-		);
+		return parseJson<GroupEncryptionKeypair[]>(await this.#storage.get(keypairsKey(groupId)), []);
 	}
 
 	async setKeypairs(groupId: string, keypairs: GroupEncryptionKeypair[]): Promise<void> {

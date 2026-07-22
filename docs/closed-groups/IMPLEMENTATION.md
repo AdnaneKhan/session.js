@@ -2,7 +2,7 @@
 
 > **Living document — update as implementation discovers discrepancies.**
 > Anything observed to differ from what is written here must be corrected
-> here *and* recorded in `docs/evidence/` (G-series task IDs) with the
+> here _and_ recorded in `docs/evidence/` (G-series task IDs) with the
 > observation that forced the change. Same convention as the voice-call
 > work (`P`-series).
 
@@ -19,16 +19,18 @@ Status: **implemented (P0–P9 complete)** — `@session.js/groups@0.1.0` with
 ## 1. Goals / non-goals
 
 **v1 goals**
+
 - Full legacy closed-group protocol: NEW / NAME_CHANGE / MEMBERS_ADDED /
   MEMBERS_REMOVED / MEMBER_LEFT / ENCRYPTION_KEY_PAIR (send + receive).
 - Group chat messages (visible messages with `GroupContext`, sealed to the
   group encryption key, namespace −10).
-- Multi-device *consumption* of group state via the legacy
+- Multi-device _consumption_ of group state via the legacy
   `ConfigurationMessage.activeClosedGroups`.
 - Wire-identical encodings (golden fixtures), offline E2E matrix, gated
   networked E2E, Tier-3 interop vs official clients.
 
 **Non-goals (v1)**
+
 - Group v2/v3 (`03…` pubkeys, libsession GroupMessages/Keys/Info/Members
   namespaces 11–14) — separate protocol, still in rewrite upstream
   (session-desktop `unstable`); documented as future work.
@@ -86,6 +88,7 @@ message GroupContext {
 ```
 
 Addresses & keys:
+
 - **Group address**: random ed25519 keypair → convert public key ed→x25519
   → prepend `0x05` → 33 bytes → hex (66 chars). The ed25519 secret is
   **discarded** — the group cannot sign; there is no cryptographic
@@ -94,7 +97,7 @@ Addresses & keys:
   (32-byte hex). Wrapper `publicKey` fields and all account/group pubkeys
   on the wire are **prefixed** (33 bytes).
 - **Envelope**: group-swarm traffic is `Envelope.type = CLOSED_GROUP_MESSAGE
-  (7)` with `source = groupPubKey`; sender identity is recovered from the
+(7)` with `source = groupPubKey`; sender identity is recovered from the
   ed25519 key embedded in the sealed box (converted to x25519, `05`-prefixed
   → `senderIdentity`), never from the envelope.
 
@@ -119,12 +122,12 @@ Addresses & keys:
 
 - Chat + control messages to the group: sealed box (Session-protocol ECIES:
   `seal(plaintext ‖ senderEdPub ‖ sig(plaintext ‖ senderEdPub ‖
-  recipientX25519))`) to the **latest group encryption pubkey**, envelope
+recipientX25519))`) to the **latest group encryption pubkey**, envelope
   `CLOSED_GROUP_MESSAGE`, stored to **the group pubkey's swarm, namespace
   −10 (`ClosedGroupMessage`), unauthenticated retrieve** (no signature; our
   `NetworkNode` already implements this path incl. the `05`-prefix rule).
 - Exceptions sent 1:1 (member swarms, ns 0): NEW invites and
-  ENCRYPTION_KEY_PAIR *replies* to specific members.
+  ENCRYPTION*KEY_PAIR \_replies* to specific members.
 - **TTL**: 14 days (`TTL_DEFAULT.CONTENT_MESSAGE`); control messages never
   expire (`expirationType: null`).
 - **Polling** (desktop model — adopt): each group pubkey is an independent
@@ -139,12 +142,12 @@ Addresses & keys:
 
 ### 2.4 Membership lifecycle
 
-| Action | Who may | Wire | Receiver behavior |
-|---|---|---|---|
-| Add members | **any member** | `MEMBERS_ADDED` → group swarm (−10) + NEW DM (ns 0) to each newcomer with latest keypair | verify sender ∈ members, timestamp > lastJoinedTimestamp, update members; **admins additionally push** an `ENCRYPTION_KEY_PAIR` reply DM (explicit `publicKey`) to newcomers (removal/re-add race fix) |
-| Remove members | **admins only** (enforced on receive) | `MEMBERS_REMOVED` → group swarm | removed member: **delete group** (stop polling, wipe keys); others: update members; the **removing admin rotates** (§2.5). Non-admin senders' removals are dropped. The first admin cannot be removed ("admins can only leave") |
-| Leave | any member | `MEMBER_LEFT` → group swarm | leaver is an **admin → group disbands for everyone** (`deleteClosedGroup`); own MEMBER_LEFT → another of our devices left → delete locally; otherwise remove from members, add to **zombies** (left-but-not-removed; pruned on re-add; admin expected to convert leaves to removals, which rotates) |
-| Rename | any member | `NAME_CHANGE` → group swarm | update name |
+| Action         | Who may                               | Wire                                                                                     | Receiver behavior                                                                                                                                                                                                                                                                                   |
+| -------------- | ------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add members    | **any member**                        | `MEMBERS_ADDED` → group swarm (−10) + NEW DM (ns 0) to each newcomer with latest keypair | verify sender ∈ members, timestamp > lastJoinedTimestamp, update members; **admins additionally push** an `ENCRYPTION_KEY_PAIR` reply DM (explicit `publicKey`) to newcomers (removal/re-add race fix)                                                                                              |
+| Remove members | **admins only** (enforced on receive) | `MEMBERS_REMOVED` → group swarm                                                          | removed member: **delete group** (stop polling, wipe keys); others: update members; the **removing admin rotates** (§2.5). Non-admin senders' removals are dropped. The first admin cannot be removed ("admins can only leave")                                                                     |
+| Leave          | any member                            | `MEMBER_LEFT` → group swarm                                                              | leaver is an **admin → group disbands for everyone** (`deleteClosedGroup`); own MEMBER_LEFT → another of our devices left → delete locally; otherwise remove from members, add to **zombies** (left-but-not-removed; pruned on re-add; admin expected to convert leaves to removals, which rotates) |
+| Rename         | any member                            | `NAME_CHANGE` → group swarm                                                              | update name                                                                                                                                                                                                                                                                                         |
 
 **Revocation is weak by design** — a removed member keeps all historical
 private keys (can decrypt swarm content until 14-day expiry and anything
@@ -157,7 +160,7 @@ signature scheme (v3 direction, commented-out `GroupAdminMessage` proto).
 - Triggered **only by an admin removing members**, sent after
   `MEMBERS_REMOVED` lands: fresh x25519 pair → per **remaining** member a
   wrapper `{ publicKey: member's prefixed key, encryptedKeyPair:
-  seal(KeyPair-proto-bytes → member's identity key) }` — **no message
+seal(KeyPair-proto-bytes → member's identity key) }` — **no message
   padding** on wrapper plaintext (decrypt side must not unpad). Message goes
   to the group swarm (−10), timestamp = snode network time.
 - In-flight copy held in memory until the send confirms (admins use it for
@@ -170,8 +173,10 @@ signature scheme (v3 direction, commented-out `GroupAdminMessage` proto).
 ### 2.6 Multi-device
 
 - Group **chat** self-syncs implicitly: linked devices poll the same group
-  swarm (−10) with the shared keypair. Own messages from the group swarm are
-  dropped; own NEW invites are sync-eligible.
+  swarm (−10) with the shared keypair. The sending device records the returned
+  message hash and suppresses only its own network echo; linked devices with
+  the same Session ID still receive the message. Own NEW invites are also
+  sync-eligible.
 - Group **state** syncs via (a) legacy `ConfigurationMessage` to own swarm
   — `activeClosedGroups[] { publicKey, name, encryptionKeyPair }` carrying
   **only the latest keypair** (schema already exists in this client; TTL 30
@@ -210,14 +215,14 @@ signature scheme (v3 direction, commented-out `GroupAdminMessage` proto).
      plumbing for `isGroup` already exists; the `encrypt()` closed-group
      branch is dead commented code — leave it, route via the new methods).
    - `ClosedGroupControlMessage` schema class in `src/messages/schema/`
-     + mapper + typed `groupUpdate` event (the `call` event precedent).
+     - mapper + typed `groupUpdate` event (the `call` event precedent).
    - `GroupContext` support in visible-message sends; legacy
      `ConfigurationMessage.activeClosedGroups` parse/emit.
 3. **Storage**: `GroupManager` takes its **own `Storage` constructor
-   dependency** (core storage is protected; no core change needed). Keys
-   follow the dynamic-prefix convention (`message_hash:` precedent):
-   `closed_group:{groupId}:state` / `:keypairs` / `:last_hashes` /
-   `:undecryptable` — JSON string values.
+   dependency** for `closed_group:{groupId}:state` / `:keypairs`. Poll cursors
+   and undecryptable retries live in the client's Session storage under
+   `:last_hashes` / `:undecryptable`; deletion explicitly clears both stores
+   so leaving and later rejoining cannot inherit a stale cursor.
 4. **License split**: groups package AGPL (ported logic — per-file
    provenance); all core patches MIT and upstreamable. Root NOTICE updated.
 
@@ -276,26 +281,26 @@ code / output sha256 / redacted excerpts / UTC timestamp), same protocol as
 
 ## 5. Port sources (per-file provenance recorded in groups/COPYING.provenance as work lands)
 
-| Concern | session-desktop (`master` @ d86076b, AGPLv3) | session-android (`v1.19.1` @ e5ee2e1, GPLv3) |
-|---|---|---|
-| Group lifecycle (create/add/remove/leave/rename/rotate) | `ts/session/group/closed-group.ts` | `…/messaging/groups/ClosedGroup.kt`, `…/utilities/GroupUtil.kt` |
-| Creation flow | `ts/session/conversations/createClosedGroup.ts` | `…/messaging/groups/ClosedGroup.kt` (form) |
-| Inbound control dispatch | `ts/receiver/closedGroups.ts` (`handleClosedGroupControlMessage`) | `…/sending_receiving/ReceivedMessageHandler.kt` (closed-group handlers) |
-| Group decrypt + keypair cache | `ts/receiver/contentMessage.ts` (`decryptForClosedGroup`) | `…/sending_receiving/MessageDecrypter.kt` |
-| Outgoing message classes | `ts/session/messages/outgoing/controlMessage/group/*.ts`, `…/visibleMessage/ClosedGroupVisibleMessage.ts` | `…/messaging/messages/control/ClosedGroupUpdateMessage.kt` |
-| Namespaces / polling model | `ts/session/apis/snode_api/{namespaces,swarmPolling}.ts` | `…/jobs/ClosedGroupPollerV2.kt` |
-| Multi-device (legacy config) | `ts/receiver/configMessage.ts`, `…/outgoing/controlMessage/ConfigurationMessage.ts` | `…/messages/control/ConfigurationMessage.kt` |
-| TTL/constants | `ts/session/constants.ts` | (TTL in Message base) |
+| Concern                                                 | session-desktop (`master` @ d86076b, AGPLv3)                                                              | session-android (`v1.19.1` @ e5ee2e1, GPLv3)                            |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Group lifecycle (create/add/remove/leave/rename/rotate) | `ts/session/group/closed-group.ts`                                                                        | `…/messaging/groups/ClosedGroup.kt`, `…/utilities/GroupUtil.kt`         |
+| Creation flow                                           | `ts/session/conversations/createClosedGroup.ts`                                                           | `…/messaging/groups/ClosedGroup.kt` (form)                              |
+| Inbound control dispatch                                | `ts/receiver/closedGroups.ts` (`handleClosedGroupControlMessage`)                                         | `…/sending_receiving/ReceivedMessageHandler.kt` (closed-group handlers) |
+| Group decrypt + keypair cache                           | `ts/receiver/contentMessage.ts` (`decryptForClosedGroup`)                                                 | `…/sending_receiving/MessageDecrypter.kt`                               |
+| Outgoing message classes                                | `ts/session/messages/outgoing/controlMessage/group/*.ts`, `…/visibleMessage/ClosedGroupVisibleMessage.ts` | `…/messaging/messages/control/ClosedGroupUpdateMessage.kt`              |
+| Namespaces / polling model                              | `ts/session/apis/snode_api/{namespaces,swarmPolling}.ts`                                                  | `…/jobs/ClosedGroupPollerV2.kt`                                         |
+| Multi-device (legacy config)                            | `ts/receiver/configMessage.ts`, `…/outgoing/controlMessage/ConfigurationMessage.ts`                       | `…/messages/control/ConfigurationMessage.kt`                            |
+| TTL/constants                                           | `ts/session/constants.ts`                                                                                 | (TTL in Message base)                                                   |
 
 ## 6. Open questions (resolve → update here + evidence)
 
-| # | Question | Due | Status |
-|---|---|---|---|
-| GQ1 | Exact `ConfigurationMessage` TTL official clients use for group-carrying configs (desktop: 30 d) — verify snode honoring | P7 | open |
-| GQ2 | Android `isValidGroupUpdate` full predicate vs desktop's `lastJoinedTimestamp` watermark — reconcile into one rule set | P4 | open |
-| GQ3 | Desktop zombie auto-cleanup: is there any send-path that converts MEMBER_LEFT → MEMBERS_REMOVED automatically, or is it manual-only? | P6 | **resolved (P6)**: manual-only. Verified in pinned desktop `handleClosedGroupMemberLeft` — on a member's MEMBER_LEFT the receiver removes them and adds a zombie; the "admin removes right away" behaviour is only an aspirational code comment, no automatic MEMBERS_REMOVED/rotation is sent. v1 matches: zombies are cleared only by an explicit `sendRemoveMembers` (which rotates) or by re-adding the member. |
-| GQ4 | libsession UserGroups wrapper: adopt in v1.1 or defer (P7 gate) | P7 | **resolved (P7)**: **deferred to v1.1** — v1 ships the legacy `ConfigurationMessage` sync only (G7-T1/T2). Decision gate: `docs/escalations/G7-T3-usergroups-wrapper.md`. |
-| GQ5 | Group v2/v3 timeline upstream — when does legacy interop stop mattering? (affects investment horizon) | P9 | open |
+| #   | Question                                                                                                                             | Due | Status                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------ | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GQ1 | Exact `ConfigurationMessage` TTL official clients use for group-carrying configs (desktop: 30 d) — verify snode honoring             | P7  | open                                                                                                                                                                                                                                                                                                                                                                                                                |
+| GQ2 | Android `isValidGroupUpdate` full predicate vs desktop's `lastJoinedTimestamp` watermark — reconcile into one rule set               | P4  | open                                                                                                                                                                                                                                                                                                                                                                                                                |
+| GQ3 | Desktop zombie auto-cleanup: is there any send-path that converts MEMBER_LEFT → MEMBERS_REMOVED automatically, or is it manual-only? | P6  | **resolved (P6)**: manual-only. Verified in pinned desktop `handleClosedGroupMemberLeft` — on a member's MEMBER_LEFT the receiver removes them and adds a zombie; the "admin removes right away" behaviour is only an aspirational code comment, no automatic MEMBERS_REMOVED/rotation is sent. v1 matches: zombies are cleared only by an explicit `sendRemoveMembers` (which rotates) or by re-adding the member. |
+| GQ4 | libsession UserGroups wrapper: adopt in v1.1 or defer (P7 gate)                                                                      | P7  | **resolved (P7)**: **deferred to v1.1** — v1 ships the legacy `ConfigurationMessage` sync only (G7-T1/T2). Decision gate: `docs/escalations/G7-T3-usergroups-wrapper.md`.                                                                                                                                                                                                                                           |
+| GQ5 | Group v2/v3 timeline upstream — when does legacy interop stop mattering? (affects investment horizon)                                | P9  | open                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## 7. Licensing
 

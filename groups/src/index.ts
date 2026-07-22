@@ -3,9 +3,9 @@
 // @session.js/groups — legacy closed groups (05-prefixed) for the patched
 // session.js client. See docs/closed-groups/IMPLEMENTATION.md and
 // COPYING.provenance.
-export { GroupManager, type GroupManagerDeps } from "./group-manager";
-export { KeypairRegistry } from "./keypairs";
-export { generateGroupAddress, generateEncryptionKeypair } from "./keygen";
+export { GroupManager, type GroupManagerDeps } from "./group-manager.js";
+export { KeypairRegistry } from "./keypairs.js";
+export { generateGroupAddress, generateEncryptionKeypair } from "./keygen.js";
 export {
 	GroupStorage,
 	InMemoryGroupStorage,
@@ -15,7 +15,7 @@ export {
 	keypairsKey,
 	lastHashesKey,
 	undecryptableKey,
-} from "./storage";
+} from "./storage.js";
 export {
 	GroupError,
 	GroupErrorCode,
@@ -28,7 +28,7 @@ export {
 	InvalidKeypairError,
 	GroupInactiveError,
 	StaleUpdateError,
-} from "./errors";
+} from "./errors.js";
 export {
 	GroupControlMessageType,
 	type GroupControlMessageTypeValue,
@@ -43,4 +43,4 @@ export {
 	type GroupManagerOptions,
 	type GroupManagerEventMap,
 	type GroupLogger,
-} from "./types";
+} from "./types.js";

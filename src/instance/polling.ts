@@ -15,11 +15,30 @@ import {
 	mapMessageRequestResponseMessage,
 	mapCallMessage,
 	mapClosedGroupControlMessage,
-	mapConfigurationClosedGroups,
+	mapCompleteConfigurationClosedGroups,
 	type SyncMessage,
 } from "@/messages";
 import lodash from "lodash";
 const { isEqual, sample } = lodash;
+
+type EnvelopeTimestamp = number | { toNumber(): number };
+
+function timestampNumber(timestamp: EnvelopeTimestamp): number {
+	return typeof timestamp === "number" ? timestamp : timestamp.toNumber();
+}
+
+/** Select the newest config from a poll batch without mutating the batch order. */
+export function selectNewestConfigurationMessage<
+	T extends { envelope: { timestamp: EnvelopeTimestamp } },
+>(messages: T[]): T | undefined {
+	return messages.reduce<T | undefined>((newest, candidate) => {
+		if (!newest) return candidate;
+		return timestampNumber(candidate.envelope.timestamp) >
+			timestampNumber(newest.envelope.timestamp)
+			? candidate
+			: newest;
+	}, undefined);
+}
 
 // Fork addition (calls support): setPollInterval. Written fresh, MIT —
 // SPDX-License-Identifier: MIT, (c) 2026 AdnaneKhan, upstreamable.
@@ -144,20 +163,9 @@ export function addPoller(this: Session, poller: Poller) {
 				.map((m) => mapMessageRequestResponseMessage(m))
 				.forEach((m) => this._emit("messageRequestApproved", m));
 
-			const configMessage = newMessages
-				.filter((m) => m.content.configurationMessage)
-				.sort((a, b) => {
-					let aTimestamp = a.envelope.timestamp;
-					let bTimestamp = b.envelope.timestamp;
-					if (typeof aTimestamp !== "number") {
-						aTimestamp = aTimestamp.toNumber();
-					}
-					if (typeof bTimestamp !== "number") {
-						bTimestamp = bTimestamp.toNumber();
-					}
-					return bTimestamp - aTimestamp;
-				})
-				.at(-1);
+			const configMessage = selectNewestConfigurationMessage(
+				newMessages.filter((m) => m.content.configurationMessage),
+			);
 
 			if (configMessage) {
 				const syncedDisplayName = configMessage.content.configurationMessage?.displayName;
@@ -189,8 +197,8 @@ export function addPoller(this: Session, poller: Poller) {
 				// carried in the legacy multi-device config sync so the groups
 				// package can reconcile them (P7). Written fresh — MIT,
 				// (c) 2026 AdnaneKhan, upstreamable.
-				const syncedClosedGroups = mapConfigurationClosedGroups(configMessage.content);
-				if (syncedClosedGroups.length) {
+				const syncedClosedGroups = mapCompleteConfigurationClosedGroups(configMessage.content);
+				if (syncedClosedGroups !== null) {
 					this._emit("syncClosedGroups", syncedClosedGroups);
 				}
 			}

@@ -1,9 +1,8 @@
 COPYING.provenance — per-file porting provenance for @session.js/groups
 ========================================================================
 
-Status: P0 SCAFFOLD — no ported files yet. This record is filled in
-per-file as implementation phases P3–P7 land, in the same format as
-calls/COPYING.provenance.
+Status: IMPLEMENTED — ported and fresh-written files are recorded below in
+the same format as calls/COPYING.provenance.
 
 License decision: everything shipped in this package is licensed
 AGPL-3.0-or-later. Official Session clients are GPLv3 (session-android)
@@ -44,11 +43,6 @@ src/group-manager.ts
   ConfigurationMessage reconciliation — join missing / overwrite / delete
   absent (P7, desktop ts/receiver/configMessage.ts analog). Licensed under
   AGPL-3.0-or-later.
-
-Expected remaining porting surface (IMPLEMENTATION.md §5, filled in P4–P7):
-  src/handlers.ts          — inbound control dispatch adapted from
-                             ts/receiver/closedGroups.ts (AGPLv3) and
-                             .../sending_receiving/ReceivedMessageHandler.kt (GPLv3)
 
 FRESH-WRITTEN FILES
 -------------------

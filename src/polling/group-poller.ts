@@ -4,7 +4,7 @@
 // `Poller` is hardcoded to the instance's own pubkey/swarm; this one targets an
 // arbitrary 05-prefixed group pubkey, decrypts with a provided keypair registry
 // (newest-first), dedupes by per-group lastHash + the global `message_hash:`
-// keys, drops our own messages, and scales cadence with last activity (desktop
+// keys, dedupes the sending device by message hash, and scales cadence with last activity (desktop
 // model). Dependencies are injected (no compile-time `Session` coupling) so the
 // `@session.js/groups` package can drive it through a structural interface and
 // it is testable against a stub network. Written fresh — (c) 2026 AdnaneKhan,
@@ -37,7 +37,7 @@ export type GroupPollerMessage = {
 export type GroupPollerOptions = {
 	/** The group's 05-prefixed public key (the swarm being polled). */
 	groupPubKey: string;
-	/** Our own 05-prefixed Session ID — used to drop our own messages. */
+	/** Our own 05-prefixed Session ID (retained for API compatibility/diagnostics). */
 	ourPubKey: string;
 	/** Returns the group's encryption keypairs (append order; newest last). */
 	getEncryptionKeyPairs: () => SessionKeys[] | Promise<SessionKeys[]>;
@@ -47,7 +47,7 @@ export type GroupPollerOptions = {
 	getSwarmsFor: (pubkey: string) => Promise<Swarm[]>;
 	/** Storage for the per-group lastHash and the global message_hash dedupe. */
 	storage: Storage;
-	/** Called with decrypted, de-duplicated, non-own messages. */
+	/** Called with decrypted messages not already processed by this device. */
 	onMessagesReceived: (messages: GroupPollerMessage[]) => void;
 	/** Injectable clock (default Date.now). */
 	now?: () => number;
@@ -65,7 +65,6 @@ type UndecryptableItem = { hash: string; data: string };
 
 export class GroupPoller {
 	readonly #groupPubKey: string;
-	readonly #ourPubKey: string;
 	readonly #opts: GroupPollerOptions;
 	readonly #now: () => number;
 	#lastActivity: number;
@@ -83,7 +82,6 @@ export class GroupPoller {
 		}
 		this.#opts = opts;
 		this.#groupPubKey = opts.groupPubKey;
-		this.#ourPubKey = opts.ourPubKey;
 		this.#now = opts.now ?? (() => Date.now());
 		this.#lastActivity = this.#now();
 	}
@@ -170,7 +168,7 @@ export class GroupPoller {
 
 	/**
 	 * Run one poll cycle: retrieve the group's namespace −10 since the last
-	 * hash, decrypt newest-first, drop our own + already-seen messages, advance
+	 * hash, decrypt newest-first, drop already-seen hashes, safely advance
 	 * the last hash, and deliver. Returns the decrypted messages.
 	 */
 	async poll(): Promise<GroupPollerMessage[]> {
@@ -200,7 +198,7 @@ export class GroupPoller {
 			if (e instanceof SessionFetchError && e.code === SessionFetchErrorCode.FetchFailed) {
 				// Rotate to a different swarm node for this group and retry once.
 				const swarms = await this.#opts.getSwarmsFor(this.#groupPubKey);
-				swarm = swarms.find((s) => s !== swarm) ?? swarms[0] ?? swarm;
+				swarm = swarms.find((s) => s.pubkey_ed25519 !== swarm.pubkey_ed25519) ?? swarms[0] ?? swarm;
 				this.#swarm = swarm;
 				response = await this.#opts.request(makeBody(swarm));
 			} else {
@@ -211,27 +209,22 @@ export class GroupPoller {
 		const items = response.messages.flatMap((m) => m.messages);
 		this.#lastPollCount = items.length;
 
-		const lastItem = items[items.length - 1];
-		if (lastItem) {
-			await storage.set(
-				this.#lastHashesKey(),
-				JSON.stringify([
-					{ namespace: SnodeNamespaces.ClosedGroupMessage, lastHash: lastItem.hash },
-				]),
-			);
-		}
-
 		const keypairs = await this.#opts.getEncryptionKeyPairs();
 		const decrypted: GroupPollerMessage[] = [];
 		const newlyUndecryptable: UndecryptableItem[] = [];
+		const processedCurrentHashes: string[] = [];
+		const processedThisPage = new Set<string>();
 
 		for (const item of items) {
 			// Global message-hash dedupe (hashes are swarm-unique).
-			if (await storage.has("message_hash:" + item.hash)) continue;
-			await storage.set("message_hash:" + item.hash, this.#now().toString());
+			if (processedThisPage.has(item.hash) || (await storage.has("message_hash:" + item.hash))) {
+				continue;
+			}
+			processedThisPage.add(item.hash);
 
 			const result = this.#tryDecrypt(item, keypairs);
-			if (result === "own" || result === "skip") continue;
+			processedCurrentHashes.push(item.hash);
+			if (result === "skip") continue;
 			if (result === "fail") {
 				newlyUndecryptable.push({ hash: item.hash, data: item.data });
 				continue;
@@ -246,7 +239,7 @@ export class GroupPoller {
 		const stillUndecryptable: UndecryptableItem[] = [];
 		for (const item of cached) {
 			const result = this.#tryDecrypt(item, keypairs);
-			if (result === "own" || result === "skip") continue; // resolved/dropped
+			if (result === "skip") continue; // malformed cache entry: drop it
 			if (result === "fail") {
 				stillUndecryptable.push(item);
 				continue;
@@ -255,50 +248,74 @@ export class GroupPoller {
 			this.#lastActivity = this.#now();
 		}
 
-		// Persist the undecryptable cache (bounded), folding in this round's failures.
-		const merged = [...stillUndecryptable, ...newlyUndecryptable].slice(-UNDECRYPTABLE_CACHE_LIMIT);
-		await this.#setUndecryptable(merged);
-
+		// Deliver before committing cache/hash/cursor state. If mapping or a consumer
+		// callback throws, the poll rejects with its previous cursor and every item is
+		// retried instead of silently losing the page.
 		if (decrypted.length) this.#opts.onMessagesReceived(decrypted);
+
+		// Persist failures before marking their hashes or advancing the cursor.
+		const mergedByHash = new Map<string, UndecryptableItem>();
+		for (const item of [...stillUndecryptable, ...newlyUndecryptable]) {
+			mergedByHash.set(item.hash, item);
+		}
+		const merged = [...mergedByHash.values()].slice(-UNDECRYPTABLE_CACHE_LIMIT);
+		await this.#setUndecryptable(merged);
+		for (const hash of processedCurrentHashes) {
+			await storage.set("message_hash:" + hash, this.#now().toString());
+		}
+
+		const lastItem = items[items.length - 1];
+		if (lastItem) {
+			await storage.set(
+				this.#lastHashesKey(),
+				JSON.stringify([
+					{ namespace: SnodeNamespaces.ClosedGroupMessage, lastHash: lastItem.hash },
+				]),
+			);
+		}
 		return decrypted;
 	}
 
 	/**
 	 * Attempt to decode + decrypt one wire item with the given keypairs.
 	 * - a decrypted message on success;
-	 * - `"own"` when the (successfully decrypted) author is us — dropped, never cached;
 	 * - `"skip"` when the payload cannot even be decoded (not a group message);
 	 * - `"fail"` when it decodes but no keypair decrypts it (cache for retry).
 	 */
 	#tryDecrypt(
 		item: { hash: string; data: string },
 		keypairs: SessionKeys[],
-	): GroupPollerMessage | "own" | "skip" | "fail" {
+	): GroupPollerMessage | "skip" | "fail" {
 		let content: Uint8Array | null;
+		let envelope: EnvelopePlus | null;
 		try {
 			content = extractContent(item.data);
+			if (content === null) return "skip";
+			envelope = decodeMessage(content, {
+				overrideSource: this.#groupPubKey,
+				ourPubKey: this.#opts.ourPubKey,
+			});
 		} catch {
 			return "skip";
 		}
-		if (content === null) return "skip";
-
-		const envelope = decodeMessage(content, {
-			overrideSource: this.#groupPubKey,
-			ourPubKey: this.#ourPubKey,
-		});
 		if (envelope === null) return "skip";
 
+		let plaintext: Uint8Array;
 		try {
-			const plaintext = decryptMessage(keypairs, envelope);
-			// Drop our own messages (real author recovered from the sealed box).
-			if (envelope.senderIdentity === this.#ourPubKey) return "own";
+			plaintext = new Uint8Array(decryptMessage(keypairs, envelope));
+		} catch {
+			return "fail";
+		}
+		try {
 			return {
 				hash: item.hash,
 				envelope,
-				content: SignalService.Content.decode(new Uint8Array(plaintext)),
+				content: SignalService.Content.decode(plaintext),
 			};
 		} catch {
-			return "fail";
+			// The correct group key decrypted the envelope, but the plaintext was not
+			// a valid Content protobuf. Trying another key cannot repair it.
+			return "skip";
 		}
 	}
 

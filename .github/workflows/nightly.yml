@@ -12,7 +12,7 @@ name: nightly
 
 on:
   schedule:
-    - cron: "17 3 * * *"   # off-minute, daily
+    - cron: "17 3 * * *" # off-minute, daily
   workflow_dispatch:
 
 jobs:
@@ -27,9 +27,14 @@ jobs:
         with:
           node-version: 22
       - name: install
-        run: bun install && cd calls && bun install
+        run: |
+          bun install
+          cd calls && bun install
+          cd ../groups && bun install
       - name: build (calls)
         run: cd calls && bun run build
+      - name: build (groups)
+        run: cd groups && bun run build
 
       - name: Tier-1 with REAL 60 s ring timeouts
         run: cd calls && bun e2e/run-tier1.ts --real-timeouts
@@ -62,3 +67,10 @@ jobs:
         env:
           SESSION_CALLS_NETWORK_TESTS: "1"
         run: cd calls && bun e2e/run-tier2.ts --only poll-latency-networked
+
+      - name: Closed-groups networked lifecycle (live swarm)
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          SESSION_GROUPS_NETWORK_TESTS: "1"
+        run: cd groups && bun test test/integration/lifecycle.test.ts

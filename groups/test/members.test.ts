@@ -4,6 +4,7 @@
 import { expect, test } from "bun:test";
 import { hexToBytes } from "@noble/ciphers/utils.js";
 import { GroupManager } from "../src/group-manager";
+import { generateEncryptionKeypair } from "../src/keygen";
 import { GroupControlMessageType } from "../src/types";
 import { NotAnAdminError } from "../src/errors";
 import { GroupBus, BusGroupSession, tick } from "./helpers/bus";
@@ -117,6 +118,56 @@ test("the first admin cannot be removed", async () => {
 	await expect(ma.sendRemoveMembers(group.publicKey, [A])).rejects.toThrow();
 });
 
+test("removing a secondary admin also revokes its admin authorization", async () => {
+	const bus = new GroupBus();
+	const sc = new BusGroupSession(C, bus);
+	const mc = new GroupManager(sc);
+	const groupId = "05" + "19".repeat(32);
+	await mc.saveGroup({
+		publicKey: groupId,
+		name: "multi-admin",
+		members: [A, B, C],
+		admins: [A, B],
+		zombies: [],
+		active: true,
+		lastJoinedTimestamp: 1,
+		formationTimestamp: 1,
+		expirationTimer: 0,
+	});
+	sc.fireGroupUpdate({
+		type: GroupControlMessageType.MEMBERS_REMOVED,
+		groupId,
+		from: A,
+		isGroupMessage: true,
+		timestamp: 2,
+		members: [B],
+		admins: [],
+		wrappers: [],
+	});
+	await tick();
+	expect(mc.getGroup(groupId)?.members).not.toContain(B);
+	expect(mc.getGroup(groupId)?.admins).not.toContain(B);
+
+	const fresh = generateEncryptionKeypair();
+	const wrapper = await sc.sealKeypairWrapper(C, {
+		publicKey: hexToBytes(fresh.publicKey),
+		privateKey: hexToBytes(fresh.privateKey),
+	});
+	sc.fireGroupUpdate({
+		type: GroupControlMessageType.ENCRYPTION_KEY_PAIR,
+		groupId,
+		publicKey: groupId,
+		from: B,
+		isGroupMessage: false,
+		timestamp: 3,
+		members: [],
+		admins: [],
+		wrappers: [{ publicKey: C, encryptedKeyPair: wrapper }],
+	});
+	await tick();
+	expect(await mc.getEncryptionKeyPairs(groupId)).toEqual([]);
+});
+
 test("cannot remove yourself (must leave)", async () => {
 	const { ma, group } = await threeManagers();
 	await expect(ma.sendRemoveMembers(group.publicKey, [A, C])).rejects.toThrow();
@@ -205,6 +256,27 @@ test("fault: update from a non-member is dropped", async () => {
 	expect(mb.getGroup(group.publicKey)!.members.slice().sort()).toEqual(membersBefore);
 });
 
+test("fault: inbound member additions cannot exceed the 100-member limit", async () => {
+	const { sb, mb, group } = await threeManagers();
+	const before = mb.getGroup(group.publicKey)!.members.slice();
+	const oversized = Array.from(
+		{ length: 101 },
+		(_, i) => "05" + (i + 10).toString(16).padStart(64, "0"),
+	);
+	sb.fireGroupUpdate({
+		type: GroupControlMessageType.MEMBERS_ADDED,
+		groupId: group.publicKey,
+		from: A,
+		isGroupMessage: true,
+		timestamp: Date.now() + 5_000_000,
+		members: oversized,
+		admins: [],
+		wrappers: [],
+	});
+	await tick();
+	expect(mb.getGroup(group.publicKey)!.members).toEqual(before);
+});
+
 test("fault: duplicate keypair (same value) is ignored", async () => {
 	const { sb, mb, group } = await threeManagers();
 	const latest = (await mb.getEncryptionKeyPairs(group.publicKey))[0];
@@ -229,7 +301,7 @@ test("fault: duplicate keypair (same value) is ignored", async () => {
 
 test("fault: ENCRYPTION_KEY_PAIR from a non-admin is dropped", async () => {
 	const { sb, mb, group } = await threeManagers();
-	const fresh = { publicKey: "99".repeat(32), privateKey: "98".repeat(32) };
+	const fresh = generateEncryptionKeypair();
 	const wrapper = await sb.sealKeypairWrapper(B, {
 		publicKey: hexToBytes(fresh.publicKey),
 		privateKey: hexToBytes(fresh.privateKey),
@@ -240,6 +312,28 @@ test("fault: ENCRYPTION_KEY_PAIR from a non-admin is dropped", async () => {
 		publicKey: group.publicKey,
 		from: C, // member but NOT admin
 		isGroupMessage: false,
+		timestamp: Date.now(),
+		members: [],
+		admins: [],
+		wrappers: [{ publicKey: B, encryptedKeyPair: wrapper }],
+	});
+	await tick();
+	expect((await mb.getEncryptionKeyPairs(group.publicKey)).length).toBe(1);
+});
+
+test("fault: group-swarm keypair update cannot redirect via an explicit publicKey", async () => {
+	const { sb, mb, group } = await threeManagers();
+	const fresh = generateEncryptionKeypair();
+	const wrapper = await sb.sealKeypairWrapper(B, {
+		publicKey: hexToBytes(fresh.publicKey),
+		privateKey: hexToBytes(fresh.privateKey),
+	});
+	sb.fireGroupUpdate({
+		type: GroupControlMessageType.ENCRYPTION_KEY_PAIR,
+		groupId: group.publicKey,
+		publicKey: group.publicKey,
+		from: A,
+		isGroupMessage: true,
 		timestamp: Date.now(),
 		members: [],
 		admins: [],

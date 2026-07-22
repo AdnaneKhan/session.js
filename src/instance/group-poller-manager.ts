@@ -40,9 +40,7 @@ export function addGroupPoller(
 	this: Session,
 	opts: {
 		groupPubKey: string;
-		getEncryptionKeyPairs: () =>
-			| GroupEncryptionKeypairHex[]
-			| Promise<GroupEncryptionKeypairHex[]>;
+		getEncryptionKeyPairs: () => GroupEncryptionKeypairHex[] | Promise<GroupEncryptionKeypairHex[]>;
 	},
 ): GroupPollerHandle {
 	// Reuse an existing poller for this group if present.
@@ -53,8 +51,7 @@ export function addGroupPoller(
 	const poller = new GroupPoller({
 		groupPubKey: opts.groupPubKey,
 		ourPubKey: this.getSessionID(),
-		getEncryptionKeyPairs: async () =>
-			(await opts.getEncryptionKeyPairs()).map(toSessionKeys),
+		getEncryptionKeyPairs: async () => (await opts.getEncryptionKeyPairs()).map(toSessionKeys),
 		request: (body: RequestPollBody) =>
 			this._request<ResponsePoll, RequestPollBody>({ type: RequestType.Poll, body }),
 		getSwarmsFor: (pubkey: string) => this.getSwarmsFor(pubkey),
@@ -82,4 +79,10 @@ export function removeGroupPoller(this: Session, handle: GroupPollerHandle): voi
 	if (!poller) return;
 	poller.stopPolling();
 	this.groupPollers.delete(handle.groupPubKey);
+}
+
+/** Remove persisted cursor/retry state when a group is deleted for this account. */
+export async function clearGroupPollerState(this: Session, groupPubKey: string): Promise<void> {
+	await this.storage.delete(`closed_group:${groupPubKey}:last_hashes`);
+	await this.storage.delete(`closed_group:${groupPubKey}:undecryptable`);
 }

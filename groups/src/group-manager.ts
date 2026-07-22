@@ -8,14 +8,14 @@
 // composition). © of ported portions: Session Foundation. Licensed under
 // AGPL-3.0-or-later.
 //
-// Phase coverage: P3 skeleton; P4 formation (createGroup) + join (inbound NEW
-// gates) + polling lifecycle; later phases add chat (P5), member ops (P6) and
-// config sync (P7) on this scaffold.
+// Phase coverage: P3 storage, P4 formation/join, P5 chat, P6 member lifecycle,
+// P7 config sync, and P8 lifecycle verification.
 import { EventEmitter } from "node:events";
 import { bytesToHex, hexToBytes } from "@noble/ciphers/utils.js";
-import { GroupStorage, InMemoryGroupStorage, type StorageLike } from "./storage";
-import { KeypairRegistry } from "./keypairs";
-import { generateEncryptionKeypair, generateGroupAddress } from "./keygen";
+import { x25519 } from "@noble/curves/ed25519.js";
+import { GroupStorage, InMemoryGroupStorage, type StorageLike } from "./storage.js";
+import { KeypairRegistry } from "./keypairs.js";
+import { generateEncryptionKeypair, generateGroupAddress } from "./keygen.js";
 import {
 	GroupTooLargeError,
 	InvalidGroupError,
@@ -24,7 +24,7 @@ import {
 	InvalidKeypairError,
 	NotAMemberError,
 	NotAnAdminError,
-} from "./errors";
+} from "./errors.js";
 import {
 	GroupControlMessageType,
 	type GroupSessionLike,
@@ -38,7 +38,7 @@ import {
 	type GroupEncryptionKeypair,
 	type GroupPollerHandle,
 	type OutgoingControlMessage,
-} from "./types";
+} from "./types.js";
 
 /** VALIDATION.CLOSED_GROUP_SIZE_LIMIT (@session.js/consts). */
 const CLOSED_GROUP_SIZE_LIMIT = 100;
@@ -69,6 +69,31 @@ function isLegacyGroupAddress(value: string): boolean {
 	return LEGACY_GROUP_ADDRESS.test(value);
 }
 
+function isValidExpirationTimer(value: number): boolean {
+	return Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff;
+}
+
+function isValidTimestamp(value: number): boolean {
+	return Number.isSafeInteger(value) && value >= 0;
+}
+
+function normalizeKeypair(keypair: {
+	publicKey: Uint8Array;
+	privateKey: Uint8Array;
+}): GroupEncryptionKeypair | null {
+	if (keypair.publicKey.length !== 32 || keypair.privateKey.length !== 32) return null;
+	try {
+		const derivedPublicKey = x25519.getPublicKey(keypair.privateKey);
+		if (bytesToHex(derivedPublicKey) !== bytesToHex(keypair.publicKey)) return null;
+		return {
+			publicKey: bytesToHex(keypair.publicKey),
+			privateKey: bytesToHex(keypair.privateKey),
+		};
+	} catch {
+		return null;
+	}
+}
+
 export class GroupManager extends EventEmitter {
 	readonly #session: GroupSessionLike;
 	readonly #options: GroupManagerOptions;
@@ -81,14 +106,15 @@ export class GroupManager extends EventEmitter {
 	readonly #pollers = new Map<string, GroupPollerHandle>();
 	#disposed = false;
 	#initialized = false;
+	#mutationQueue: Promise<void> = Promise.resolve();
 
 	// Bound listeners so off() can remove exactly what on() added.
 	readonly #onGroupUpdate = (u: GroupUpdateEvent): void =>
-		this.#guardAsync(() => this.#handleGroupUpdate(u));
+		this.#enqueueInbound(() => this.#handleGroupUpdate(u));
 	readonly #onGroupMessage = (m: GroupMessageEvent): void =>
 		this.#guard(() => this.#handleGroupMessage(m));
 	readonly #onSyncClosedGroups = (groups: GroupConfigEvent[]): void =>
-		this.#guardAsync(() => this.#handleSyncClosedGroups(groups));
+		this.#enqueueInbound(() => this.#handleSyncClosedGroups(groups));
 
 	constructor(session: GroupSessionLike, options?: GroupManagerOptions, deps?: GroupManagerDeps) {
 		super();
@@ -125,12 +151,20 @@ export class GroupManager extends EventEmitter {
 
 	/** Load known groups from storage. Idempotent. */
 	async init(): Promise<void> {
+		return this.#runMutation(() => this.#init());
+	}
+
+	async #init(): Promise<void> {
 		if (this.#initialized) return;
 		const ids = await this.#storage.getGroupIds();
 		for (const id of ids) {
 			const state = await this.#storage.getState(id);
-			if (state) this.#groups.set(id, state);
+			if (state) {
+				this.#groups.set(id, state);
+				if (state.active) this.#startPolling(id);
+			}
 		}
+		await this.#refreshSessionConfigCache();
 		this.#initialized = true;
 	}
 
@@ -158,17 +192,15 @@ export class GroupManager extends EventEmitter {
 	}
 
 	/** The group's latest encryption keypair (the one we send with). */
-	async getLatestEncryptionKeyPair(
-		publicKey: string,
-	): Promise<GroupEncryptionKeypair | undefined> {
+	async getLatestEncryptionKeyPair(publicKey: string): Promise<GroupEncryptionKeypair | undefined> {
 		return this.#keypairs.getLatest(publicKey);
 	}
 
 	/** Persist a group state (in-memory + storage + index). */
 	async saveGroup(state: GroupState): Promise<void> {
-		this.#groups.set(state.publicKey, state);
 		await this.#storage.addGroupId(state.publicKey);
 		await this.#storage.setState(state.publicKey, state);
+		this.#groups.set(state.publicKey, state);
 	}
 
 	// -- Formation (P4) ------------------------------------------------------
@@ -179,7 +211,17 @@ export class GroupManager extends EventEmitter {
 	 * (including ourselves, for multi-device), store the group + keypair and
 	 * start polling the group swarm. Emits `groupCreated`.
 	 */
-	async createGroup({
+	async createGroup(options: {
+		name: string;
+		/** Member Session IDs to invite (ourselves is always included). */
+		members: string[];
+		/** Disappearing-message timer in seconds (deleteAfterSend); 0 = off. */
+		expirationTimer?: number;
+	}): Promise<GroupState> {
+		return this.#runMutation(() => this.#createGroup(options));
+	}
+
+	async #createGroup({
 		name,
 		members,
 		expirationTimer = 0,
@@ -192,6 +234,9 @@ export class GroupManager extends EventEmitter {
 	}): Promise<GroupState> {
 		if (!name?.length) {
 			throw new InvalidGroupError("group name must be non-empty");
+		}
+		if (!isValidExpirationTimer(expirationTimer)) {
+			throw new InvalidGroupError("expirationTimer must be a uint32 number of seconds");
 		}
 		for (const m of members) {
 			if (!isLegacyGroupAddress(m)) {
@@ -221,6 +266,7 @@ export class GroupManager extends EventEmitter {
 		};
 		await this.saveGroup(state);
 		await this.#keypairs.append(groupAddr, encKeypair);
+		await this.#refreshSessionConfigCache();
 
 		// One NEW per member (including self), sent 1:1 to each member's swarm,
 		// sealed to that member's identity key; the group keypair travels
@@ -271,7 +317,8 @@ export class GroupManager extends EventEmitter {
 			throw new InvalidKeypairError(`no encryption keypair for group ${groupPubKey}`, groupPubKey);
 		}
 
-		const expireTimer = opts?.expireTimer ?? (group.expirationTimer > 0 ? group.expirationTimer : 0);
+		const expireTimer =
+			opts?.expireTimer ?? (group.expirationTimer > 0 ? group.expirationTimer : 0);
 		return this.#session.sendGroupMessage({
 			to: groupPubKey,
 			encryptionPublicKey: latest.publicKey,
@@ -305,8 +352,18 @@ export class GroupManager extends EventEmitter {
 	 * Receiving admins additionally keypair-push (handled inbound).
 	 */
 	async sendAddMembers(groupPubKey: string, membersToAdd: string[]): Promise<void> {
+		return this.#runMutation(() => this.#sendAddMembers(groupPubKey, membersToAdd));
+	}
+
+	async #sendAddMembers(groupPubKey: string, membersToAdd: string[]): Promise<void> {
 		const group = this.#requireActiveMemberGroup(groupPubKey);
-		const newMembers = membersToAdd.filter((m) => !group.members.includes(m));
+		const candidates = dedupe(membersToAdd);
+		for (const member of candidates) {
+			if (!isLegacyGroupAddress(member)) {
+				throw new InvalidGroupError(`invalid member Session ID ${member}`, groupPubKey);
+			}
+		}
+		const newMembers = candidates.filter((m) => !group.members.includes(m));
 		if (newMembers.length === 0) return;
 		const allMembers = dedupe([...group.members, ...newMembers]);
 		if (allMembers.length > CLOSED_GROUP_SIZE_LIMIT) {
@@ -314,9 +371,11 @@ export class GroupManager extends EventEmitter {
 		}
 		const latest = await this.#requireLatestKeypair(groupPubKey);
 
-		group.members = allMembers;
-		group.zombies = group.zombies.filter((z) => !newMembers.includes(z));
-		await this.saveGroup(group);
+		const nextGroup: GroupState = {
+			...group,
+			members: allMembers,
+			zombies: group.zombies.filter((z) => !newMembers.includes(z)),
+		};
 
 		await this.#session.sendClosedGroupUpdate({
 			to: groupPubKey,
@@ -326,8 +385,10 @@ export class GroupManager extends EventEmitter {
 				members: newMembers.map(hexToBytes),
 			},
 		});
-		await this.#sendNewInvites(group, newMembers, latest);
-		this.emit("groupChanged", group);
+		await this.#sendNewInvites(nextGroup, newMembers, latest);
+		await this.saveGroup(nextGroup);
+		await this.#refreshSessionConfigCache();
+		this.emit("groupChanged", nextGroup);
 	}
 
 	/** Send a NEW invite DM (with the given keypair) to each target member. */
@@ -361,53 +422,82 @@ export class GroupManager extends EventEmitter {
 	 * keypair (§2.5), wrapping the new key for each remaining member.
 	 */
 	async sendRemoveMembers(groupPubKey: string, membersToRemove: string[]): Promise<void> {
+		return this.#runMutation(() => this.#sendRemoveMembers(groupPubKey, membersToRemove));
+	}
+
+	async #sendRemoveMembers(groupPubKey: string, membersToRemove: string[]): Promise<void> {
 		const group = this.#requireActiveMemberGroup(groupPubKey);
 		if (!group.admins.includes(this.ourId)) {
 			throw new NotAnAdminError(groupPubKey, this.ourId);
 		}
-		if (membersToRemove.includes(this.ourId)) {
+		const candidates = dedupe(membersToRemove);
+		for (const member of candidates) {
+			if (!isLegacyGroupAddress(member)) {
+				throw new InvalidGroupError(`invalid member Session ID ${member}`, groupPubKey);
+			}
+		}
+		const actualRemoved = candidates.filter((member) => group.members.includes(member));
+		if (actualRemoved.length === 0) return;
+		if (actualRemoved.includes(this.ourId)) {
 			throw new InvalidGroupError("cannot remove yourself; use sendLeave", groupPubKey);
 		}
-		if (group.admins.length > 0 && membersToRemove.includes(group.admins[0])) {
-			throw new InvalidGroupError("the first admin cannot be removed; they can only leave", groupPubKey);
+		if (group.admins.length > 0 && actualRemoved.includes(group.admins[0])) {
+			throw new InvalidGroupError(
+				"the first admin cannot be removed; they can only leave",
+				groupPubKey,
+			);
 		}
 		const latest = await this.#requireLatestKeypair(groupPubKey);
-		const stillMembers = group.members.filter((m) => !membersToRemove.includes(m));
-
-		group.members = stillMembers;
-		await this.saveGroup(group);
+		const stillMembers = group.members.filter((m) => !actualRemoved.includes(m));
+		const nextGroup: GroupState = {
+			...group,
+			members: stillMembers,
+			admins: group.admins.filter((admin) => stillMembers.includes(admin)),
+			zombies: group.zombies.filter((zombie) => stillMembers.includes(zombie)),
+		};
 
 		await this.#session.sendClosedGroupUpdate({
 			to: groupPubKey,
 			encryptionPublicKey: latest.publicKey,
 			controlMessage: {
 				type: GroupControlMessageType.MEMBERS_REMOVED,
-				members: membersToRemove.map(hexToBytes),
+				members: actualRemoved.map(hexToBytes),
 			},
 		});
 		await this.#rotate(groupPubKey, stillMembers);
-		this.emit("groupChanged", group);
+		await this.saveGroup(nextGroup);
+		await this.#refreshSessionConfigCache();
+		this.emit("groupChanged", nextGroup);
 	}
 
 	/** Rename the group (any member, spec §2.4). */
 	async sendRename(groupPubKey: string, newName: string): Promise<void> {
+		return this.#runMutation(() => this.#sendRename(groupPubKey, newName));
+	}
+
+	async #sendRename(groupPubKey: string, newName: string): Promise<void> {
 		const group = this.#requireActiveMemberGroup(groupPubKey);
 		if (!newName?.length) {
 			throw new InvalidGroupError("group name must be non-empty", groupPubKey);
 		}
 		const latest = await this.#requireLatestKeypair(groupPubKey);
-		group.name = newName;
-		await this.saveGroup(group);
+		const nextGroup: GroupState = { ...group, name: newName };
 		await this.#session.sendClosedGroupUpdate({
 			to: groupPubKey,
 			encryptionPublicKey: latest.publicKey,
 			controlMessage: { type: GroupControlMessageType.NAME_CHANGE, name: newName },
 		});
-		this.emit("groupChanged", group);
+		await this.saveGroup(nextGroup);
+		await this.#refreshSessionConfigCache();
+		this.emit("groupChanged", nextGroup);
 	}
 
 	/** Leave the group (any member, spec §2.4). Sends MEMBER_LEFT then deletes locally. */
 	async sendLeave(groupPubKey: string): Promise<void> {
+		return this.#runMutation(() => this.#sendLeave(groupPubKey));
+	}
+
+	async #sendLeave(groupPubKey: string): Promise<void> {
 		const group = this.#requireActiveMemberGroup(groupPubKey);
 		const latest = await this.#requireLatestKeypair(groupPubKey);
 		await this.#session.sendClosedGroupUpdate({
@@ -471,9 +561,11 @@ export class GroupManager extends EventEmitter {
 	/** Delete a group for ourselves: stop polling, wipe keys + state. */
 	async #deleteClosedGroup(groupPubKey: string): Promise<void> {
 		this.#stopPolling(groupPubKey);
+		await this.#session.clearGroupPollerState?.(groupPubKey);
 		await this.#keypairs.removeAll(groupPubKey);
 		await this.#storage.deleteGroup(groupPubKey);
 		this.#groups.delete(groupPubKey);
+		await this.#refreshSessionConfigCache();
 		this.emit("groupRemoved", { publicKey: groupPubKey });
 	}
 
@@ -511,6 +603,8 @@ export class GroupManager extends EventEmitter {
 	 * our join watermark, and the sender must be a current member.
 	 */
 	#validateGroupUpdate(update: GroupUpdateEvent): GroupState | null {
+		if (!update.isGroupMessage) return null;
+		if (!isValidTimestamp(update.timestamp)) return null;
 		const group = this.getGroup(update.groupId);
 		if (!group) return null;
 		if (update.timestamp <= group.lastJoinedTimestamp) return null; // stale
@@ -520,24 +614,29 @@ export class GroupManager extends EventEmitter {
 
 	async #handleNameChange(update: GroupUpdateEvent): Promise<void> {
 		const group = this.#validateGroupUpdate(update);
-		if (!group || update.name === undefined) return;
+		if (!group || !update.name?.length) return;
 		group.name = update.name;
 		await this.saveGroup(group);
+		await this.#refreshSessionConfigCache();
 		this.emit("groupChanged", group);
 	}
 
 	async #handleMembersAdded(update: GroupUpdateEvent): Promise<void> {
 		const group = this.#validateGroupUpdate(update);
 		if (!group) return;
+		if (update.members.some((member) => !isLegacyGroupAddress(member))) return;
 		const newMembers = update.members.filter((m) => !group.members.includes(m));
+		if (dedupe([...group.members, ...newMembers]).length > CLOSED_GROUP_SIZE_LIMIT) return;
 		// A re-added zombie is no longer a zombie.
 		group.zombies = group.zombies.filter((z) => !update.members.includes(z));
 		if (newMembers.length === 0) {
 			await this.saveGroup(group);
+			await this.#refreshSessionConfigCache();
 			return;
 		}
 		group.members = dedupe([...group.members, ...newMembers]);
 		await this.saveGroup(group);
+		await this.#refreshSessionConfigCache();
 		this.emit("groupChanged", group);
 		// Admin race fix (§2.4): a receiving admin pushes the latest keypair to
 		// newcomers (covers remove/re-add while the admin was offline).
@@ -547,11 +646,14 @@ export class GroupManager extends EventEmitter {
 	}
 
 	async #handleMembersRemoved(update: GroupUpdateEvent): Promise<void> {
+		if (!update.isGroupMessage) return;
+		if (!isValidTimestamp(update.timestamp)) return;
 		const group = this.getGroup(update.groupId);
 		if (!group) return;
 		if (update.timestamp <= group.lastJoinedTimestamp) return; // stale
 		if (!group.members.includes(update.from)) return; // non-member
 		const removed = update.members;
+		if (removed.some((member) => !isLegacyGroupAddress(member))) return;
 		// The first admin cannot be removed (they can only leave).
 		if (group.admins.length > 0 && removed.includes(group.admins[0])) return;
 		// Removal is admin-only (enforced on receive).
@@ -564,12 +666,16 @@ export class GroupManager extends EventEmitter {
 			return;
 		}
 		group.members = membersAfter;
+		group.admins = group.admins.filter((admin) => membersAfter.includes(admin));
 		group.zombies = group.zombies.filter((z) => membersAfter.includes(z));
 		await this.saveGroup(group);
+		await this.#refreshSessionConfigCache();
 		this.emit("groupChanged", group);
 	}
 
 	async #handleMemberLeft(update: GroupUpdateEvent): Promise<void> {
+		if (!update.isGroupMessage) return;
+		if (!isValidTimestamp(update.timestamp)) return;
 		const group = this.getGroup(update.groupId);
 		if (!group) return;
 		if (update.timestamp <= group.lastJoinedTimestamp) return; // stale
@@ -591,27 +697,32 @@ export class GroupManager extends EventEmitter {
 		group.members = newMembers;
 		if (!group.zombies.includes(sender)) group.zombies.push(sender);
 		await this.saveGroup(group);
+		await this.#refreshSessionConfigCache();
 		this.emit("groupChanged", group);
 	}
 
 	async #handleEncryptionKeyPair(update: GroupUpdateEvent): Promise<void> {
+		// Rotations on the group swarm omit publicKey; 1:1 keypair replies must
+		// carry it. Reject cross-routed messages instead of allowing an explicit
+		// field to redirect a group-swarm update to another group's registry.
+		if (update.isGroupMessage === (update.publicKey !== undefined)) return;
 		// Explicit publicKey (1:1 reply) or the group-swarm envelope source.
 		const groupAddr = update.publicKey ?? update.groupId;
 		const group = this.getGroup(groupAddr);
 		if (!group?.active) return;
 		// Only admins distribute keypairs (group swarm) / replies.
-		if (!group.admins.includes(update.from)) return;
+		if (!group.members.includes(update.from) || !group.admins.includes(update.from)) return;
 		const ourWrapper = update.wrappers.find((w) => w.publicKey === this.ourId);
 		if (!ourWrapper) return;
-		const keypair = await this.#session.openKeypairWrapper(ourWrapper.encryptedKeyPair);
+		const openedKeypair = await this.#session.openKeypairWrapper(ourWrapper.encryptedKeyPair);
+		if (!openedKeypair) return;
+		const keypair = normalizeKeypair(openedKeypair);
 		if (!keypair) return;
-		const added = await this.#keypairs.append(groupAddr, {
-			publicKey: bytesToHex(keypair.publicKey),
-			privateKey: bytesToHex(keypair.privateKey),
-		});
+		const added = await this.#keypairs.append(groupAddr, keypair);
 		if (added) {
 			// New keypair → cached undecryptables retry on the next poll automatically
 			// (the GroupPoller's keypair provider now returns the new pair).
+			await this.#refreshSessionConfigCache();
 			this.emit("groupChanged", group);
 		}
 	}
@@ -626,6 +737,8 @@ export class GroupManager extends EventEmitter {
 	 */
 	async #handleNew(update: GroupUpdateEvent): Promise<void> {
 		const { from, name, publicKey, members, admins, encryptionKeyPair, timestamp } = update;
+		if (update.isGroupMessage) return;
+		if (!isValidTimestamp(timestamp)) return;
 
 		// Gate: sender approved (or self).
 		if (from !== this.ourId && !this.#isSenderApproved(from)) {
@@ -641,6 +754,12 @@ export class GroupManager extends EventEmitter {
 		if (!members.includes(this.ourId)) {
 			return;
 		}
+		if (members.length > CLOSED_GROUP_SIZE_LIMIT) return;
+		if (members.some((member) => !isLegacyGroupAddress(member))) return;
+		if (admins.some((admin) => !isLegacyGroupAddress(admin) || !members.includes(admin))) return;
+		if (!members.includes(from)) return;
+		if (update.expirationTimer !== undefined && !isValidExpirationTimer(update.expirationTimer))
+			return;
 		// Gate: legacy group address (not 03…/v3).
 		if (!isLegacyGroupAddress(publicKey)) {
 			this.#log("info", `dropping NEW for non-legacy group address ${publicKey}`);
@@ -648,14 +767,27 @@ export class GroupManager extends EventEmitter {
 		}
 
 		const groupAddr = publicKey;
-		const encKeypair: GroupEncryptionKeypair = {
-			publicKey: bytesToHex(encryptionKeyPair.publicKey),
-			privateKey: bytesToHex(encryptionKeyPair.privateKey),
-		};
+		const encKeypair = normalizeKeypair(encryptionKeyPair);
+		if (!encKeypair) return;
 
 		// Dedupe: already in the group (and not left) → just append the keypair.
 		const existing = this.getGroup(groupAddr);
 		if (existing && existing.active) {
+			const savedKeys = await this.#keypairs.getAll(groupAddr);
+			const alreadySaved = savedKeys.some(
+				(k) => k.publicKey === encKeypair.publicKey && k.privateKey === encKeypair.privateKey,
+			);
+			if (alreadySaved) return;
+			// A NEW is an invitation, not a general key-rotation channel. Once the
+			// group exists, only ourselves or a currently-authorized admin may add a
+			// previously unseen keypair. This prevents an approved former member from
+			// replacing our outbound key with one they control.
+			if (
+				from !== this.ourId &&
+				(!existing.members.includes(from) || !existing.admins.includes(from))
+			) {
+				return;
+			}
 			await this.#keypairs.append(groupAddr, encKeypair);
 			return;
 		}
@@ -664,8 +796,8 @@ export class GroupManager extends EventEmitter {
 		const state: GroupState = {
 			publicKey: groupAddr,
 			name,
-			members,
-			admins,
+			members: dedupe(members),
+			admins: dedupe(admins),
 			zombies: [],
 			active: true,
 			lastJoinedTimestamp: timestamp,
@@ -674,6 +806,7 @@ export class GroupManager extends EventEmitter {
 		};
 		await this.saveGroup(state);
 		await this.#keypairs.append(groupAddr, encKeypair);
+		await this.#refreshSessionConfigCache();
 		this.#startPolling(groupAddr);
 		this.emit("groupJoined", state);
 	}
@@ -695,7 +828,7 @@ export class GroupManager extends EventEmitter {
 	 * Only the latest keypair is carried — pre-rotation history is undecryptable
 	 * on linked devices (documented limitation).
 	 */
-	async syncGroupsToLinkedDevices(): Promise<void> {
+	async #buildActiveClosedGroupsConfig(): Promise<GroupConfigEvent[]> {
 		const activeClosedGroups: Array<{
 			publicKey: string;
 			name: string;
@@ -717,28 +850,69 @@ export class GroupManager extends EventEmitter {
 				admins: group.admins,
 			});
 		}
+		return activeClosedGroups;
+	}
+
+	async #refreshSessionConfigCache(): Promise<void> {
+		if (!this.#session.setConfigurationClosedGroups) return;
+		this.#session.setConfigurationClosedGroups(await this.#buildActiveClosedGroupsConfig());
+	}
+
+	async syncGroupsToLinkedDevices(): Promise<void> {
+		return this.#runMutation(() => this.#syncGroupsToLinkedDevices());
+	}
+
+	async #syncGroupsToLinkedDevices(): Promise<void> {
+		const activeClosedGroups = await this.#buildActiveClosedGroupsConfig();
+		this.#session.setConfigurationClosedGroups?.(activeClosedGroups);
 		await this.#session.sendConfigurationMessage({ activeClosedGroups });
 	}
 
 	/**
 	 * Reconcile an inbound config sync (spec §2.6): join groups we don't know,
 	 * overwrite the state of ones we do (config is authoritative) and append
-	 * their keypair, and delete active groups absent from a non-empty sync (a
+	 * their keypair, and delete active groups absent from the authoritative sync (a
 	 * linked device left / was removed — no leave message is sent).
 	 */
 	async #handleSyncClosedGroups(configGroups: GroupConfigEvent[]): Promise<void> {
-		const syncedIds = new Set<string>();
+		const validated: Array<{ group: GroupConfigEvent; keypair: GroupEncryptionKeypair }> = [];
+		const seenConfigIds = new Set<string>();
 		for (const cg of configGroups) {
+			const keypair = normalizeKeypair(cg.encryptionKeyPair);
+			const validMembers =
+				cg.members.length > 0 &&
+				cg.members.length <= CLOSED_GROUP_SIZE_LIMIT &&
+				cg.members.every(isLegacyGroupAddress);
+			const validAdmins =
+				cg.admins.length > 0 &&
+				cg.admins.every((admin) => isLegacyGroupAddress(admin) && cg.members.includes(admin));
+			if (
+				seenConfigIds.has(cg.publicKey) ||
+				!isLegacyGroupAddress(cg.publicKey) ||
+				!cg.name.length ||
+				!validMembers ||
+				!validAdmins ||
+				!cg.members.includes(this.ourId) ||
+				!keypair
+			) {
+				// A config is a full authoritative snapshot. Never apply a partial
+				// snapshot when one entry is malformed, because doing so would delete
+				// otherwise-valid local groups that happened to be omitted by validation.
+				return;
+			}
+			seenConfigIds.add(cg.publicKey);
+			validated.push({ group: cg, keypair });
+		}
+
+		const syncedIds = new Set<string>();
+		for (const { group: cg, keypair } of validated) {
 			syncedIds.add(cg.publicKey);
-			const keypair = {
-				publicKey: bytesToHex(cg.encryptionKeyPair.publicKey),
-				privateKey: bytesToHex(cg.encryptionKeyPair.privateKey),
-			};
 			const existing = this.getGroup(cg.publicKey);
 			if (existing) {
 				existing.name = cg.name;
-				existing.members = cg.members;
-				existing.admins = cg.admins;
+				existing.members = dedupe(cg.members);
+				existing.admins = dedupe(cg.admins);
+				existing.zombies = existing.zombies.filter((zombie) => existing.members.includes(zombie));
 				existing.active = true;
 				await this.saveGroup(existing);
 				await this.#keypairs.append(cg.publicKey, keypair);
@@ -747,8 +921,8 @@ export class GroupManager extends EventEmitter {
 				const state: GroupState = {
 					publicKey: cg.publicKey,
 					name: cg.name,
-					members: cg.members,
-					admins: cg.admins,
+					members: dedupe(cg.members),
+					admins: dedupe(cg.admins),
 					zombies: [],
 					active: true,
 					lastJoinedTimestamp: this.now(),
@@ -761,15 +935,12 @@ export class GroupManager extends EventEmitter {
 				this.emit("groupJoined", state);
 			}
 		}
-		// Guard against a partial/empty config wiping everything: only delete
-		// absent groups when the sync actually carried groups.
-		if (syncedIds.size > 0) {
-			for (const group of this.getActiveGroups()) {
-				if (!syncedIds.has(group.publicKey)) {
-					await this.#deleteClosedGroup(group.publicKey);
-				}
+		for (const group of this.getActiveGroups()) {
+			if (!syncedIds.has(group.publicKey)) {
+				await this.#deleteClosedGroup(group.publicKey);
 			}
 		}
+		await this.#refreshSessionConfigCache();
 	}
 
 	// -- Polling lifecycle ---------------------------------------------------
@@ -805,14 +976,34 @@ export class GroupManager extends EventEmitter {
 		}
 	}
 
-	#guardAsync(fn: () => Promise<void>): void {
-		fn().catch((e) => this.#emitError(e));
+	#enqueueInbound(fn: () => Promise<void>): void {
+		void this.#runMutation(async () => {
+			if (!this.#disposed) await fn();
+		}).catch((e) => this.#emitError(e));
+	}
+
+	/** Serialize every state transition so inbound and local mutations cannot overwrite each other. */
+	#runMutation<T>(fn: () => Promise<T>): Promise<T> {
+		const operation = this.#mutationQueue.then(fn);
+		this.#mutationQueue = operation.then(
+			() => undefined,
+			() => undefined,
+		);
+		return operation;
 	}
 
 	#emitError(e: unknown): void {
 		const error = e instanceof Error ? e : new Error(String(e));
 		this.#log("error", "group handler error", { err: error.message });
-		this.emit("error", { error });
+		try {
+			this.emit("error", { error });
+		} catch (listenerError) {
+			// Node's EventEmitter throws when `error` has no listeners, and consumer
+			// listeners may throw too. Neither case may escape session event plumbing.
+			this.#log("error", "group error listener failed", {
+				err: listenerError instanceof Error ? listenerError.message : String(listenerError),
+			});
+		}
 	}
 
 	/** Idempotent teardown: unsubscribe from the session, stop group pollers. */
@@ -822,6 +1013,7 @@ export class GroupManager extends EventEmitter {
 		this.#session.off("groupUpdate", this.#onGroupUpdate);
 		this.#session.off("message", this.#onGroupMessage);
 		this.#session.off("syncClosedGroups", this.#onSyncClosedGroups);
+		await this.#mutationQueue;
 		for (const groupPubKey of [...this.#pollers.keys()]) {
 			this.#stopPolling(groupPubKey);
 		}

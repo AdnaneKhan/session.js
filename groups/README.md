@@ -59,7 +59,7 @@ full guide and [API reference](../docs-site/docs/closed-groups/api-reference.md)
 - **Offline E2E matrix:** `bun e2e/run-matrix.ts` — 12 multi-manager scenarios
   incl. a concurrent add/remove rotation race
 - **Networked lifecycle:** `SESSION_GROUPS_NETWORK_TESTS=1 bun test
-  test/integration/lifecycle.test.ts` (gated; throwaway accounts; nightly,
+test/integration/lifecycle.test.ts` (gated; throwaway accounts; nightly,
   continue-on-error)
 
 ## License
@@ -73,10 +73,10 @@ on (`GroupPoller`, group send methods, `./crypto` export,
 written fresh from the published proto facts and are **MIT**.
 
 !!! note "AGPL §13"
-    If you run this code as a network service (e.g. an agent fleet others
-    interact with over Session), AGPL §13 requires you to make the complete
-    corresponding source — including your modifications — available to the
-    users of that service. See the root [`NOTICE`](../NOTICE).
+If you run this code as a network service (e.g. an agent fleet others
+interact with over Session), AGPL §13 requires you to make the complete
+corresponding source — including your modifications — available to the
+users of that service. See the root [`NOTICE`](../NOTICE).
 
 ## Known limitations
 

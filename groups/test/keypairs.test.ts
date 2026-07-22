@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { expect, test } from "bun:test";
-import { GroupStorage, InMemoryGroupStorage } from "../src/storage";
+import { GroupStorage, InMemoryGroupStorage, type StorageLike } from "../src/storage";
 import { KeypairRegistry } from "../src/keypairs";
 import { GROUP_A } from "./helpers/fakes";
 
@@ -20,9 +20,10 @@ test("registry dedupes by value (public+private)", async () => {
 	const registry = new KeypairRegistry(new GroupStorage(new InMemoryGroupStorage()));
 	expect(await registry.append(GROUP_A, KP1)).toBe(true);
 	expect(await registry.append(GROUP_A, { ...KP1 })).toBe(false); // duplicate
-	expect(await registry.append(GROUP_A, { publicKey: KP1.publicKey, privateKey: KP2.privateKey }))
-		.toBe(true); // different value
-	expect((await registry.getAll(GROUP_A))).toHaveLength(2);
+	expect(
+		await registry.append(GROUP_A, { publicKey: KP1.publicKey, privateKey: KP2.privateKey }),
+	).toBe(true); // different value
+	expect(await registry.getAll(GROUP_A)).toHaveLength(2);
 });
 
 test("registry persists across instances (storage-backed)", async () => {
@@ -51,4 +52,28 @@ test("registry removeAll clears keypairs (persisted)", async () => {
 	expect(await registry.getAll(GROUP_A)).toEqual([]);
 	// A fresh registry over the same storage agrees.
 	expect(await new KeypairRegistry(storage).getAll(GROUP_A)).toEqual([]);
+});
+
+test("registry serializes concurrent appends without losing a keypair", async () => {
+	class SlowStorage implements StorageLike {
+		readonly values = new Map<string, string>();
+		async get(key: string): Promise<string | null> {
+			await Bun.sleep(2);
+			return this.values.get(key) ?? null;
+		}
+		async set(key: string, value: string): Promise<void> {
+			await Bun.sleep(2);
+			this.values.set(key, value);
+		}
+		delete(key: string): void {
+			this.values.delete(key);
+		}
+		has(key: string): boolean {
+			return this.values.has(key);
+		}
+	}
+
+	const registry = new KeypairRegistry(new GroupStorage(new SlowStorage()));
+	await Promise.all([registry.append(GROUP_A, KP1), registry.append(GROUP_A, KP2)]);
+	expect(await registry.getAll(GROUP_A)).toEqual([KP1, KP2]);
 });

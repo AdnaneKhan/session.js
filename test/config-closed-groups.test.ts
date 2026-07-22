@@ -3,11 +3,12 @@
 // docs/evidence/G2-T4.md.
 import { expect, test } from "bun:test";
 import { SignalService } from "@session.js/types/signal-bindings";
-import { mapConfigurationClosedGroups } from "@/messages";
+import { mapCompleteConfigurationClosedGroups, mapConfigurationClosedGroups } from "@/messages";
 import {
 	ConfigurationMessage,
 	ConfigurationMessageClosedGroup,
 } from "@/messages/schema/configuration-message";
+import { selectNewestConfigurationMessage } from "@/instance/polling";
 import { hexToBytes, bytesToHex } from "@noble/ciphers/utils.js";
 
 const GROUP_PUBKEY = "05" + "11".repeat(32);
@@ -52,6 +53,7 @@ test("mapConfigurationClosedGroups returns [] when no closedGroups / missing key
 		},
 	});
 	expect(mapConfigurationClosedGroups(noKeypair)).toEqual([]);
+	expect(mapCompleteConfigurationClosedGroups(noKeypair)).toBeNull();
 });
 
 test("ConfigurationMessageClosedGroup emit → parse round-trips (legacy config sync)", () => {
@@ -114,4 +116,11 @@ test("ConfigurationMessageClosedGroup validates admins ⊆ members and keypair p
 				admins: [MEMBER_A],
 			}),
 	).toThrow();
+});
+
+test("configuration polling selects the newest message in a batch", () => {
+	const older = { envelope: { timestamp: 100 }, id: "older" };
+	const newest = { envelope: { timestamp: { toNumber: () => 300 } }, id: "newest" };
+	const middle = { envelope: { timestamp: 200 }, id: "middle" };
+	expect(selectNewestConfigurationMessage([newest, older, middle])).toBe(newest);
 });

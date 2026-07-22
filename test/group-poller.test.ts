@@ -11,6 +11,7 @@ import type { SessionKeys } from "@session.js/keypair";
 import { generateSeedHex, getKeysFromSeed } from "@session.js/keypair";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex } from "@noble/ciphers/utils.js";
+import { base64 } from "@scure/base";
 import { wrap } from "@/crypto";
 import { GroupPoller, type GroupPollerMessage } from "@/polling";
 import { InMemoryStorage } from "@/storage";
@@ -28,7 +29,11 @@ function groupEncryptionKeys(): { keys: SessionKeys; pubHex: string } {
 		pubHex: bytesToHex(pub),
 		keys: {
 			x25519: { keyType: "x25519", privateKey: priv, publicKey: pub },
-			ed25519: { keyType: "ed25519", privateKey: new Uint8Array(32), publicKey: new Uint8Array(32) },
+			ed25519: {
+				keyType: "ed25519",
+				privateKey: new Uint8Array(32),
+				publicKey: new Uint8Array(32),
+			},
 		},
 	};
 }
@@ -73,10 +78,16 @@ type Harness = {
 	poller: GroupPoller;
 	received: GroupPollerMessage[];
 	lastRequest: RequestPollBody | undefined;
+	storage: InMemoryStorage;
 	setItems: (items: { hash: string; data: string }[]) => void;
 };
 
-function makeHarness(groupKeys: SessionKeys, ourPubKey: string, now?: () => number): Harness {
+function makeHarness(
+	groupKeys: SessionKeys,
+	ourPubKey: string,
+	now?: () => number,
+	onMessagesReceived?: (messages: GroupPollerMessage[]) => void,
+): Harness {
 	let items: { hash: string; data: string }[] = [];
 	const received: GroupPollerMessage[] = [];
 	let lastRequest: RequestPollBody | undefined;
@@ -92,20 +103,26 @@ function makeHarness(groupKeys: SessionKeys, ourPubKey: string, now?: () => numb
 				messages: [
 					{
 						namespace: SnodeNamespaces.ClosedGroupMessage,
-						messages: items.map((i) => ({ hash: i.hash, data: i.data, expiration: 0, timestamp: 0 })),
+						messages: items.map((i) => ({
+							hash: i.hash,
+							data: i.data,
+							expiration: 0,
+							timestamp: 0,
+						})),
 					},
 				],
 			};
 		},
 		getSwarmsFor: async () => [SWARM],
 		storage,
-		onMessagesReceived: (msgs) => received.push(...msgs),
+		onMessagesReceived: onMessagesReceived ?? ((msgs) => received.push(...msgs)),
 		now,
 	});
 
 	return {
 		poller,
 		received,
+		storage,
 		get lastRequest() {
 			return lastRequest;
 		},
@@ -143,21 +160,81 @@ test("GroupPoller polls ns −10 unauthenticated and decrypts a group message", 
 	expect(h.lastRequest!.swarm).toEqual(SWARM);
 });
 
-test("GroupPoller drops our own messages from the group swarm", async () => {
+test("GroupPoller uses hash dedupe so linked devices receive same-account messages", async () => {
 	const ourKeys = getKeysFromSeed(generateSeedHex());
 	const ourPubKey = bytesToHex(ourKeys.x25519.publicKey);
 	const group = groupEncryptionKeys();
 
-	const h = makeHarness(group.keys, ourPubKey);
+	const linkedDevice = makeHarness(group.keys, ourPubKey);
 	// We are the author of this one.
 	const own = await buildGroupMessage(ourKeys, group.pubHex, "mine", 1751000000000);
 	const other = getKeysFromSeed(generateSeedHex());
 	const theirs = await buildGroupMessage(other, group.pubHex, "theirs", 1751000000001);
-	h.setItems([own, theirs]);
+	linkedDevice.setItems([own, theirs]);
+
+	// A linked device has separate storage, so it receives both the same-account
+	// message and the other member's message.
+	const linkedOut = await linkedDevice.poller.poll();
+	expect(linkedOut).toHaveLength(2);
+	expect(linkedOut.map((m) => m.content.dataMessage?.body)).toEqual(["mine", "theirs"]);
+
+	// The sending device records the returned store hash before polling, so only
+	// its local network echo is suppressed.
+	const sendingDevice = makeHarness(group.keys, ourPubKey);
+	await sendingDevice.storage.set("message_hash:" + own.hash, "1");
+	sendingDevice.setItems([own, theirs]);
+	const out = await sendingDevice.poller.poll();
+	expect(out).toHaveLength(1);
+	expect(out[0].content.dataMessage?.body).toBe("theirs");
+});
+
+test("GroupPoller skips a malformed envelope without losing valid messages in the page", async () => {
+	const sender = getKeysFromSeed(generateSeedHex());
+	const group = groupEncryptionKeys();
+	const ourPubKey = bytesToHex(getKeysFromSeed(generateSeedHex()).x25519.publicKey);
+	const h = makeHarness(group.keys, ourPubKey);
+	const good = await buildGroupMessage(sender, group.pubHex, "survives", 1751000000000);
+	const malformed = base64.encode(
+		SignalService.WebSocketMessage.encode(
+			new SignalService.WebSocketMessage({
+				type: SignalService.WebSocketMessage.Type.REQUEST,
+				request: { body: new Uint8Array([0xff]) },
+			}),
+		).finish(),
+	);
+	h.setItems([{ hash: "poison", data: malformed }, good]);
 
 	const out = await h.poller.poll();
 	expect(out).toHaveLength(1);
-	expect(out[0].content.dataMessage?.body).toBe("theirs");
+	expect(out[0].content.dataMessage?.body).toBe("survives");
+
+	// The page was fully handled, so only now is its final cursor committed.
+	h.setItems([]);
+	await h.poller.poll();
+	expect(h.lastRequest!.namespaces[0].lastHash).toBe(good.hash);
+});
+
+test("GroupPoller does not commit hashes or cursor when consumer delivery fails", async () => {
+	const sender = getKeysFromSeed(generateSeedHex());
+	const group = groupEncryptionKeys();
+	const ourPubKey = bytesToHex(getKeysFromSeed(generateSeedHex()).x25519.publicKey);
+	let failDelivery = true;
+	const delivered: GroupPollerMessage[] = [];
+	const h = makeHarness(group.keys, ourPubKey, undefined, (messages) => {
+		if (failDelivery) throw new Error("consumer failed");
+		delivered.push(...messages);
+	});
+	const message = await buildGroupMessage(sender, group.pubHex, "retry-me", 1751000000000);
+	h.setItems([message]);
+
+	await expect(h.poller.poll()).rejects.toThrow("consumer failed");
+	expect(await h.storage.has("message_hash:" + message.hash)).toBe(false);
+	expect(await h.storage.get(`closed_group:${GROUP_ADDR}:last_hashes`)).toBeNull();
+
+	failDelivery = false;
+	const retried = await h.poller.poll();
+	expect(retried).toHaveLength(1);
+	expect(delivered[0].content.dataMessage?.body).toBe("retry-me");
 });
 
 test("GroupPoller advances lastHash and dedupes by message_hash across polls", async () => {

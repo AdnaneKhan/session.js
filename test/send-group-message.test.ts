@@ -61,7 +61,11 @@ function groupEncryptionKeys(): { keys: SessionKeys; pubHex: string } {
 		pubHex: bytesToHex(pub),
 		keys: {
 			x25519: { keyType: "x25519", privateKey: priv, publicKey: pub },
-			ed25519: { keyType: "ed25519", privateKey: new Uint8Array(32), publicKey: new Uint8Array(32) },
+			ed25519: {
+				keyType: "ed25519",
+				privateKey: new Uint8Array(32),
+				publicKey: new Uint8Array(32),
+			},
 		},
 	};
 }
@@ -87,6 +91,9 @@ test("sendGroupMessage stores a CLOSED_GROUP_MESSAGE to ns −10, sealed to the 
 	expect(stores).toHaveLength(1);
 	expect(stores[0].destination).toBe(GROUP_ADDR);
 	expect(stores[0].namespace).toBe(SnodeNamespaces.ClosedGroupMessage); // −10
+	expect(
+		await (session as unknown as { storage: InMemoryStorage }).storage.has("message_hash:hash1"),
+	).toBe(true);
 
 	// The envelope is a CLOSED_GROUP_MESSAGE whose source is the group address.
 	const { envelope } = decodeStored(stores[0].data64);
@@ -99,7 +106,7 @@ test("sendGroupMessage stores a CLOSED_GROUP_MESSAGE to ns −10, sealed to the 
 	);
 	expect(content.dataMessage?.body).toBe("hi group");
 	expect(content.dataMessage?.group?.type).toBe(SignalService.GroupContext.Type.DELIVER);
-	expect(td.decode(content.dataMessage!.group!.id)).toBe(GROUP_ADDR);
+	expect(td.decode(content.dataMessage!.group!.id ?? undefined)).toBe(GROUP_ADDR);
 });
 
 test("sendClosedGroupUpdate (group mode) stores a control message to ns −10", async () => {
@@ -157,12 +164,10 @@ test("sendClosedGroupUpdate (DM mode) stores a NEW invite to ns 0, sealed to the
 	const { envelope } = decodeStored(stores[0].data64);
 	expect(envelope.type).toBe(SignalService.Envelope.Type.SESSION_MESSAGE);
 	const keys = session.getKeys()!;
-	const content = SignalService.Content.decode(
-		new Uint8Array(decryptMessage([keys], envelope)),
-	);
+	const content = SignalService.Content.decode(new Uint8Array(decryptMessage([keys], envelope)));
 	const cgcm = content.dataMessage?.closedGroupControlMessage;
 	expect(cgcm?.type).toBe(SignalService.DataMessage.ClosedGroupControlMessage.Type.NEW);
-	expect(bytesToHex(cgcm!.publicKey)).toBe(GROUP_ADDR);
+	expect(bytesToHex(cgcm!.publicKey!)).toBe(GROUP_ADDR);
 	expect(cgcm?.name).toBe("new group");
 	expect(bytesToHex(cgcm!.encryptionKeyPair!.publicKey)).toBe(group.pubHex);
 });
@@ -183,6 +188,15 @@ test("sendGroupMessage rejects a non-05 group address and a bad encryption key",
 			to: GROUP_ADDR,
 			encryptionPublicKey: "nothex",
 			text: "x",
+		}),
+	).rejects.toThrow();
+	await expect(
+		session.sendGroupMessage({
+			to: GROUP_ADDR,
+			encryptionPublicKey: group.pubHex,
+			text: "x",
+			expirationType: "deleteAfterRead",
+			expireTimer: 60,
 		}),
 	).rejects.toThrow();
 });

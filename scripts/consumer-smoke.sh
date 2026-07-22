@@ -3,8 +3,9 @@
 #
 # scripts/consumer-smoke.sh — S9 consumer smoke test (plan P8-T2).
 #
-# Packs @session.js/calls and the patched @session.js/client fork into
-# tarballs, installs BOTH into a scratch consumer project, imports
+# Packs @session.js/calls, @session.js/groups, and the patched
+# @session.js/client fork into tarballs, installs all three into a scratch
+# consumer project, imports
 # { CallManager, PeerConnectionManager } from the PACKED calls package,
 # instantiates CallManager over a duck-typed SessionLike fake (structural
 # contract — no real network), asserts construction + approval round-trip +
@@ -29,18 +30,22 @@ echo "[smoke] building @session.js/client (fork) ..."
 (cd "$REPO_ROOT" && bun run build)
 echo "[smoke] building @session.js/calls ..."
 (cd "$REPO_ROOT/calls" && bun run build)
+echo "[smoke] building @session.js/groups ..."
+(cd "$REPO_ROOT/groups" && bun run build)
 
 # --- 2. Pack tarballs --------------------------------------------------------
 echo "[smoke] packing tarballs ..."
 (cd "$REPO_ROOT" && npm pack --pack-destination "$WORK" >/dev/null)
 (cd "$REPO_ROOT/calls" && npm pack --pack-destination "$WORK" >/dev/null)
+(cd "$REPO_ROOT/groups" && npm pack --pack-destination "$WORK" >/dev/null)
 CLIENT_TGZ="$(ls "$WORK"/session.js-client-*.tgz)"
 CALLS_TGZ="$(ls "$WORK"/session.js-calls-*.tgz)"
+GROUPS_TGZ="$(ls "$WORK"/session.js-groups-*.tgz)"
 
 echo "[smoke] tarball sizes:"
-wc -c "$CLIENT_TGZ" "$CALLS_TGZ" | sed 's/^/[smoke]   /'
+wc -c "$CLIENT_TGZ" "$CALLS_TGZ" "$GROUPS_TGZ" | sed 's/^/[smoke]   /'
 echo "[smoke] sha256:"
-shasum -a 256 "$CLIENT_TGZ" "$CALLS_TGZ" | sed 's/^/[smoke]   /'
+shasum -a 256 "$CLIENT_TGZ" "$CALLS_TGZ" "$GROUPS_TGZ" | sed 's/^/[smoke]   /'
 
 echo "[smoke] calls tarball contents (files-field effect — no docs/evidence/test/spike):"
 tar -tzf "$CALLS_TGZ" | head -12 | sed 's/^/[smoke]   /'
@@ -60,7 +65,8 @@ cat > package.json <<EOF
 	"type": "module",
 	"dependencies": {
 		"@session.js/calls": "file:$CALLS_TGZ",
-		"@session.js/client": "file:$CLIENT_TGZ"
+		"@session.js/client": "file:$CLIENT_TGZ",
+		"@session.js/groups": "file:$GROUPS_TGZ"
 	}
 }
 EOF
@@ -99,6 +105,11 @@ console.log("[consumer] PeerConnectionManager construct: OK");
 const client = await import("@session.js/client");
 assert.strictEqual(typeof client.Session, "function", "client Session export present");
 console.log("[consumer] @session.js/client import: OK (Session export present)");
+
+// The packed groups package must retain Node-compatible relative ESM imports.
+const groups = await import("@session.js/groups");
+assert.strictEqual(typeof groups.GroupManager, "function", "groups GroupManager export present");
+console.log("[consumer] @session.js/groups import: OK (GroupManager export present)");
 console.log("CONSUMER-SMOKE-PASS");
 EOF
 
@@ -106,5 +117,7 @@ echo "[smoke] installing consumer dependencies (bun) ..."
 bun install >/dev/null 2>&1 || bun install
 echo "[smoke] running consumer script ..."
 bun consumer.mjs
+echo "[smoke] checking packed groups import under Node ..."
+node -e "import('@session.js/groups').then(m => { if (typeof m.GroupManager !== 'function') throw new Error('no GroupManager export'); console.log('[consumer] @session.js/groups Node import: OK'); })"
 
 echo "[smoke] CONSUMER SMOKE: EXIT 0"

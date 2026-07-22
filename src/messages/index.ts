@@ -83,7 +83,7 @@ export function mapDataMessage({ hash, envelope, content }: Content): Message {
 		lokiProfile: content.dataMessage!.profile ?? undefined,
 		profileKey: content.dataMessage!.profileKey ?? undefined,
 	});
-	author.displayName ||= getPlaceholderDisplayName(envelope.source);
+	author.displayName ||= getPlaceholderDisplayName(from);
 	return {
 		id: hash,
 		...(isGroup
@@ -394,6 +394,19 @@ export function mapConfigurationClosedGroups(content: SignalService.Content): Cl
 			members: (g.members ?? []).map((m) => bytesToHex(m)),
 			admins: (g.admins ?? []).map((a) => bytesToHex(a)),
 		}));
+}
+
+/**
+ * Map an authoritative closed-group snapshot without silently dropping malformed
+ * wire entries. Field-level validation remains with GroupManager; null means the
+ * mapper had to omit an entry and the snapshot must not be reconciled.
+ */
+export function mapCompleteConfigurationClosedGroups(
+	content: SignalService.Content,
+): ClosedGroupConfig[] | null {
+	const encodedCount = content.configurationMessage?.closedGroups?.length ?? 0;
+	const mapped = mapConfigurationClosedGroups(content);
+	return mapped.length === encodedCount ? mapped : null;
 }
 
 export type ReactionMessage = {
